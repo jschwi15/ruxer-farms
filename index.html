@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ruxer Farms LLC</title>
+<meta name="theme-color" content="#121512">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ruxer Farms">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one dark working column for phone use in the shop. Machine list, or one machine: name card + hour-meter card, tabs (Status / Specs / Log / Intervals), panels below. Deliberately single dark look. */
+:root {
+  --bg: #121512;
+  --surface: #1a1e1a;
+  --raised: #222722;
+  --line: #2d342d;
+  --ink: #eef1ec;
+  --muted: #98a297;
+  --green: #5f9a69;
+  --green-ink: #0e170f;
+  --good: #6cc27b;
+  --warn: #e3a53b;
+  --bad: #e8735f;
+  --chip: #2a302a;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 14px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+.login { max-width: 380px; margin: 8vh auto 0; display: grid; gap: 14px; }
+.login h1 { font-size: 2.4rem; text-transform: uppercase; letter-spacing: .04em; }
+.login .err { color: var(--bad); font-size: .9rem; min-height: 1.2em; }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { padding-block: 18px 64px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; margin: 0; }
+.eyebrow { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--f-mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+button, .btn { font: 600 .95rem/1 var(--f-body); border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 11px 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; min-height: 44px; }
+button:hover, .btn:hover { border-color: var(--muted); }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+.primary { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+.primary:hover { border-color: var(--good); filter: brightness(1.06); }
+.big { width: 100%; min-height: 58px; font-size: 1.15rem; border-radius: var(--r); }
+.danger { color: var(--bad); }
+.danger.solid { background: var(--bad); border-color: var(--bad); color: var(--green-ink); }
+.small { padding: 7px 12px; min-height: 34px; font-size: .85rem; }
+.link { border: 0; padding: 0; min-height: 0; color: var(--good); font-weight: 600; }
+
+input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; }
+textarea { min-height: 80px; resize: vertical; }
+label.f { display: grid; gap: 5px; min-width: 0; }
+label.f > span { text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; color: var(--muted); font-weight: 600; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
+.chipst { display: inline-flex; align-items: center; font-size: .82rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.chipst.s-ok { color: var(--good); } .chipst.s-soon { color: var(--warn); } .chipst.s-due { color: var(--bad); }
+
+/* Top bar */
+.top { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; min-height: 44px; }
+.top .brand { font: 700 1.35rem/1 var(--f-display); text-transform: uppercase; letter-spacing: .06em; color: var(--ink); text-decoration: none; }
+.top .spacer { flex: 1; }
+.back { color: var(--muted); text-decoration: none; font-weight: 600; font-size: .9rem; }
+.back:hover { color: var(--ink); }
+
+/* Machine header */
+.mhead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; margin-bottom: 16px; }
+.mcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 18px; display: grid; gap: 4px; align-content: center; min-width: 0; }
+.mcard h1 { font-size: 1.85rem; line-height: 1.02; overflow-wrap: anywhere; }
+.meter { background: var(--green); color: var(--green-ink); border: 0; border-radius: var(--r); padding: 14px 18px; display: grid; gap: 4px; align-content: center; justify-items: start; text-align: left; min-width: 120px; }
+.meter .eyebrow { color: var(--green-ink); opacity: .75; }
+.meter b { font: 700 1.85rem/1 var(--f-display); }
+.meter:hover { filter: brightness(1.07); }
+.meterform { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+.meterform label { flex: 1 1 160px; }
+
+/* Tabs */
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.tabs button { border: 0; border-radius: 0; min-height: 52px; font-size: 1rem; font-weight: 500; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 8px 4px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--green); }
+
+/* Tally */
+.tally { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.tally div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 2px; }
+.tally b { font: 700 2.2rem/1 var(--f-display); }
+.tally span { color: var(--muted); font-size: .92rem; }
+
+/* Service rows */
+.svc h2, .panel > h2 { font-size: 1.55rem; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; padding: 18px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.row:last-child { border-bottom: 0; padding-bottom: 4px; }
+.row .t { font-size: 1.1rem; font-weight: 500; overflow-wrap: anywhere; }
+.row .sub { color: var(--muted); font-size: .95rem; }
+.row .sub2 { font-size: .85rem; margin-top: 2px; }
+.row .side { display: grid; gap: 8px; justify-items: end; }
+.row .confirm { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: var(--raised); border-radius: 12px; padding: 10px 12px; font-size: .9rem; }
+.row .confirm span { flex: 1 1 180px; }
+.bar { height: 4px; background: var(--chip); border-radius: 2px; overflow: hidden; margin-top: 8px; max-width: 260px; }
+.bar i { display: block; height: 100%; background: var(--good); }
+.bar.s-soon i { background: var(--warn); } .bar.s-due i { background: var(--bad); }
+
+/* Specs */
+.stack { display: grid; gap: 14px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px 20px; padding-top: 14px; }
+.facts .v { font-weight: 600; overflow-wrap: anywhere; }
+.vin { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vin .mono { font-size: 1.05rem; letter-spacing: .08em; user-select: all; overflow-wrap: anywhere; }
+.part { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.part:last-child { border-bottom: 0; padding-bottom: 0; }
+.part .pn { font-family: var(--f-mono); font-size: 1rem; color: var(--good); text-align: right; overflow-wrap: anywhere; }
+.part .x { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; }
+.note { white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 14px; }
+.panel .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.panel .hd h2 { font-size: 1.55rem; padding: 0; border: 0; }
+
+/* Log */
+.entry { padding: 16px 0; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.entry:last-child { border-bottom: 0; padding-bottom: 0; }
+.entry .eh { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: baseline; }
+.entry .date { font: 700 1.2rem/1 var(--f-display); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: .8rem; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--good); font-weight: 600; }
+.entry p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Interval table */
+.scroll { overflow-x: auto; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th { text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; padding: 12px 10px 10px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 12px 10px 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+
+/* List */
+.ltally { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.ltally div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; }
+.ltally b { font: 700 2rem/1 var(--f-display); }
+.ltally span { color: var(--muted); font-size: .82rem; }
+@media (max-width: 460px) { .ltally { grid-template-columns: repeat(2, 1fr); } }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar input { flex: 1 1 220px; width: auto; }
+.cards { display: grid; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; text-decoration: none; color: inherit; align-items: start; }
+.card:hover { border-color: var(--muted); }
+.card h3 { font-size: 1.5rem; line-height: 1.05; overflow-wrap: anywhere; }
+.card .meta { grid-column: 1 / -1; color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+.card .next { grid-column: 1 / -1; font-size: .9rem; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.empty { border: 2px dashed var(--line); border-radius: var(--r); padding: 40px 20px; text-align: center; display: grid; gap: 12px; justify-items: center; }
+.empty h2 { font-size: 1.8rem; }
+.empty p { margin: 0; max-width: 44ch; color: var(--muted); }
+
+/* Forms */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding-top: 14px; }
+.fgrid .wide { grid-column: 1 / -1; }
+.rep { display: grid; gap: 10px; padding-top: 14px; }
+.reprow { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; padding: 14px; background: var(--raised); border-radius: 12px; }
+.reprow .w2 { grid-column: span 2; }
+.reprow .rm { justify-self: end; }
+@media (max-width: 520px) { .reprow .w2 { grid-column: 1 / -1; } }
+.checks { display: grid; gap: 8px; }
+.checks label { display: flex; gap: 12px; align-items: center; padding: 12px 14px; background: var(--raised); border-radius: 12px; cursor: pointer; }
+.checks input { width: 22px; height: 22px; flex: none; accent-color: var(--green); }
+.formfoot { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.dangerzone { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 22px; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: .92rem; z-index: 20; max-width: calc(100% - 32px); }
+.banner { padding: 10px 14px; border-radius: 12px; background: var(--chip); color: var(--warn); font-size: .88rem; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<main class="wrap" id="app">
+  <div class="empty"><h2>Loading equipment…</h2><p>Connecting to the shared log.</p></div>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+<script>
+(() => {
+  const $app = document.getElementById('app');
+  const $toast = document.getElementById('toast');
+  const S = {
+    db: null, user: null, myId: null, canWrite: true, dbChecked: false, confirmed: false,
+    equipment: [], logs: [], eqLoaded: false, logsLoaded: false, offline: false,
+    view: { name: 'list' }, tab: 'status', meterOpen: false, confirmIv: null,
+    formShown: false, pendingRender: false, search: ''
+  };
+
+  // ---------- helpers ----------
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    let value;
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'value') value = v;
+      else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat(Infinity)) {
+      if (kid == null || kid === false) continue;
+      el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+    }
+    if (value !== undefined) el.value = value;
+    return el;
+  }
+  const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const numOrNull = (v) => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+  const fmtN = (n) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function parseD(s) { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); }
+  function addMonths(s, n) { const d = parseD(s); const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + Math.round(n)); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); d.setDate(Math.min(day, last)); return d; }
+  function daysUntil(date) { return Math.round((date - parseD(todayStr())) / 86400000); }
+  function fmtDate(d) { if (typeof d === 'string') d = parseD(d); return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+  const unitLabel = (u) => ({ hrs: 'hrs', mi: 'mi', km: 'km' }[u] || 'hrs');
+  const meterName = (u) => (u === 'mi' || u === 'km') ? 'Odometer' : 'Hour meter';
+  function toast(msg) { $toast.textContent = msg; $toast.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { $toast.hidden = true; }, 2600); }
+  function go(hash) { if (location.hash === hash || (hash === '' && !location.hash)) route(); else location.hash = hash; }
+  function dbErr(e) {
+    const code = e && e.code;
+    if (code === '42501' || code === 'PGRST301') toast('Your sign-in has expired. Sign out and sign back in.');
+    else toast('Could not save. Check your connection and try again.');
+    console.error(e);
+  }
+  function everyText(iv, u) {
+    const parts = [numOrNull(iv.everyMeter) ? `${fmtN(iv.everyMeter)} ${u}` : null, numOrNull(iv.everyMonths) ? `${fmtN(iv.everyMonths)} mo` : null].filter(Boolean);
+    return parts.length ? 'Every ' + parts.join(' / ') : 'No interval set';
+  }
+
+  // ---------- status math ----------
+  const RANK = { unknown: -1, ok: 0, soon: 1, due: 2 };
+  const LABEL = { ok: 'Good', soon: 'Due soon', due: 'Overdue', unknown: 'No record' };
+  function intervalStatus(eq, iv) {
+    const cur = numOrNull(eq.meter), u = unitLabel(eq.meterUnit);
+    let level = null, texts = [], pct = null;
+    const every = numOrNull(iv.everyMeter), last = numOrNull(iv.lastMeter);
+    if (every > 0 && last != null && cur != null) {
+      const dueAt = last + every, rem = dueAt - cur;
+      level = rem <= 0 ? 'due' : rem <= every * 0.1 ? 'soon' : 'ok';
+      pct = Math.max(0, Math.min(1, (cur - last) / every));
+      texts.push(rem <= 0 ? `${fmtN(-rem)} ${u} overdue` : `${fmtN(rem)} ${u} left · due at ${fmtN(dueAt)}`);
+    }
+    const months = numOrNull(iv.everyMonths);
+    if (months > 0 && iv.lastDate) {
+      const due = addMonths(iv.lastDate, months), days = daysUntil(due);
+      const l = days < 0 ? 'due' : days <= Math.max(14, months * 3) ? 'soon' : 'ok';
+      if (level == null || RANK[l] > RANK[level]) level = l;
+      const total = Math.max(1, daysUntil(due) - daysUntil(parseD(iv.lastDate)));
+      const p = Math.max(0, Math.min(1, 1 - days / total));
+      pct = pct == null ? p : Math.max(pct, p);
+      texts.push(days < 0 ? `${-days} days overdue` : `by ${fmtDate(due)}`);
+    }
+    if (level == null) {
+      const why = (every > 0 && last != null && cur == null) ? 'Set the hour meter to see what is due' : '';
+      return { level: 'unknown', text: why, pct: null };
+    }
+    return { level, text: texts.join(' or '), pct };
+  }
+  function eqStatus(eq) {
+    let worst = 'unknown', next = null, nextRank = -2;
+    const counts = { ok: 0, soon: 0, due: 0, unknown: 0 };
+    for (const iv of eq.intervals || []) {
+      const s = intervalStatus(eq, iv);
+      counts[s.level]++;
+      if (RANK[s.level] > RANK[worst]) worst = s.level;
+      const r = RANK[s.level] + (s.pct || 0) * 0.5;
+      if (r > nextRank) { nextRank = r; next = { iv, s }; }
+    }
+    return { level: worst, next, counts };
+  }
+  const chip = (level) => h('span', { class: 'chipst s-' + level, text: LABEL[level] });
+
+  function fillNames() { }
+
+  // ---------- writes ----------
+  function findEq(id) { return S.equipment.find(e => e.id === id); }
+  async function saveEq(eq) {
+    const body = JSON.parse(JSON.stringify(eq));
+    delete body.id;
+    body.updatedAt = Date.now();
+    if (S.myName) body.updatedBy = S.myName;
+    await S.db.doc('equipment/' + eq.id).set(body);
+  }
+  async function recordService(eqId, { date, meter, done, work, parts, cost }) {
+    const e = findEq(eqId);
+    const log = { equipmentId: eqId, date, meter, tasks: done,
+      taskNames: done.map(d => ((e.intervals || []).find(i => i.id === d) || {}).task || 'Service'),
+      work: work || '', parts: parts || '', cost: cost ?? null, createdAt: Date.now() };
+    if (S.myName) log.by = S.myName;
+    await S.db.doc('logs/' + uid('l')).set(log);
+    const next = JSON.parse(JSON.stringify(findEq(eqId) || e));
+    next.intervals = (next.intervals || []).map(iv => {
+      if (!done.includes(iv.id)) return iv;
+      return (!iv.lastDate || date >= iv.lastDate) ? { ...iv, lastDate: date, lastMeter: meter != null ? meter : iv.lastMeter } : iv;
+    });
+    if (meter != null && (numOrNull(next.meter) == null || meter >= Number(next.meter))) { next.meter = meter; next.meterDate = date; }
+    await saveEq(next);
+  }
+
+  // ---------- routing / render ----------
+  function parseHash() {
+    const s = location.hash.slice(1); let m;
+    if (s === 'new') return { name: 'edit', id: null };
+    if ((m = s.match(/^edit-([A-Za-z0-9]+)$/))) return { name: 'edit', id: m[1] };
+    if ((m = s.match(/^log-([A-Za-z0-9]+)$/))) return { name: 'log', id: m[1] };
+    if ((m = s.match(/^eq-([A-Za-z0-9]+)$/))) return { name: 'detail', id: m[1] };
+    return { name: 'list' };
+  }
+  function route() {
+    const prev = S.view; S.view = parseHash();
+    if (S.view.name === 'detail' && !(prev.name !== 'detail' && prev.id === S.view.id)) { if (prev.id !== S.view.id) S.tab = 'status'; }
+    S.meterOpen = false; S.confirmIv = null; S.formShown = false;
+    render(true); window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', route);
+  function render(force) {
+    const v = S.view;
+    const isForm = v.name === 'edit' || v.name === 'log';
+    if (!force) {
+      if (isForm && S.formShown) return;
+      const a = document.activeElement;
+      if (a && $app.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) { S.pendingRender = true; return; }
+    }
+    S.pendingRender = false;
+    let node;
+    if (S.setupMissing) node = msg('Setup needed', 'Add the Supabase project URL and public key to config.js.');
+    else if (S.badLink) node = msg('This link is incomplete', 'Open the app with the full link the farm owner sent you. It ends with ?k= and a long code.');
+    else if (S.needName) node = nameView();
+    else if (!S.eqLoaded) node = msg('Loading equipment…', 'Connecting to the shared log.');
+    else if (v.name === 'detail') node = detail(v.id);
+    else if (v.name === 'edit') { node = editor(v.id); S.formShown = true; }
+    else if (v.name === 'log') { node = logForm(v.id); S.formShown = true; }
+    else node = list();
+    $app.replaceChildren(...[S.offline ? h('div', { class: 'banner', text: 'The shared log has not answered yet. What you see may be out of date.' }) : null, node].filter(Boolean));
+    fillNames();
+  }
+  $app.addEventListener('focusout', () => setTimeout(() => { if (S.pendingRender) render(); }, 0));
+  const msg = (t, p) => h('div', { class: 'empty' }, h('h2', { text: t }), h('p', { text: p }));
+
+  // ---------- list ----------
+  function list() {
+    const eqs = S.equipment;
+    const frag = h('div', null, h('div', { class: 'top' }, h('a', { class: 'brand', href: '#', text: 'Ruxer Farms LLC' }), h('span', { class: 'spacer' }),
+      S.canWrite && eqs.length ? h('a', { class: 'btn primary small', href: '#new', text: '+ Add' }) : null,
+      h('button', { class: 'small', type: 'button', text: S.myName || 'Name', title: 'Change your name', onclick: () => { S.needName = true; render(true); } })));
+    if (!eqs.length) {
+      frag.append(h('div', { class: 'empty' },
+        h('div', { class: 'eyebrow', text: 'Nothing on the log yet' }),
+        h('h2', { text: 'Add your first machine' }),
+        h('p', { text: 'Each machine holds its VIN or serial, filter part numbers, and service intervals by hours, miles or months. Everyone you share this page with sees the same list.' }),
+        S.canWrite ? h('a', { class: 'btn primary', href: '#new', text: '+ Add equipment' }) : h('p', { text: 'You have view-only access.' })));
+      return frag;
+    }
+    const st = eqs.map(e => ({ e, s: eqStatus(e) }));
+    const count = (l) => st.filter(x => x.s.level === l).length;
+    frag.append(h('div', { class: 'ltally' },
+      h('div', null, h('b', { class: 'num', text: eqs.length }), h('span', { text: eqs.length === 1 ? 'Machine' : 'Machines' })),
+      h('div', null, h('b', { class: 'num', style: 'color:var(--bad)', text: count('due') }), h('span', { text: 'Overdue' })),
+      h('div', null, h('b', { class: 'num', style: 'color:var(--warn)', text: count('soon') }), h('span', { text: 'Due soon' })),
+      h('div', null, h('b', { class: 'num', style: 'color:var(--good)', text: count('ok') }), h('span', { text: 'Good' }))));
+    const cards = h('div', { class: 'cards' });
+    const draw = () => {
+      const q = S.search.trim().toLowerCase();
+      const rows = st.filter(({ e }) => !q || [e.name, e.make, e.model, e.year, e.vin, e.category, ...(e.filters || []).map(f => `${f.name} ${f.number} ${f.alt}`)].join(' ').toLowerCase().includes(q))
+        .sort((a, b) => RANK[b.s.level] - RANK[a.s.level] || String(a.e.name).localeCompare(String(b.e.name)));
+      cards.replaceChildren(...rows.map(({ e, s }) => card(e, s)));
+      if (!rows.length) cards.append(h('p', { class: 'muted', text: 'No machines match that search.' }));
+    };
+    if (eqs.length > 3) frag.append(h('div', { class: 'toolbar' }, h('input', { id: 'search', type: 'search', placeholder: 'Search name, VIN or part number', value: S.search, 'aria-label': 'Search equipment', oninput: (ev) => { S.search = ev.target.value; draw(); } })));
+    draw();
+    frag.append(cards);
+    return frag;
+  }
+  function card(e, s) {
+    const u = unitLabel(e.meterUnit);
+    const meta = [e.vin ? 'VIN ' + e.vin : null, e.meter != null && e.meter !== '' ? `${fmtN(e.meter)} ${u}` : 'Hour meter not set'].filter(Boolean).join(' · ');
+    return h('a', { class: 'card', href: '#eq-' + e.id },
+      h('div', { style: 'display:grid;gap:2px;min-width:0' }, h('div', { class: 'eyebrow', text: e.category || 'Machine' }), h('h3', { text: e.name || 'Unnamed machine' })),
+      chip(s.level),
+      h('div', { class: 'meta num', text: meta }),
+      s.next ? h('div', { class: 'next' }, h('b', { text: s.next.iv.task || 'Service' }), ' · ', h('span', { class: 'muted', text: s.next.s.text || everyText(s.next.iv, u) })) : h('div', { class: 'next muted', text: 'No service intervals set' }));
+  }
+
+  // ---------- detail ----------
+  function detail(id) {
+    const e = findEq(id);
+    if (!e) return h('div', null, h('div', { class: 'top' }, h('a', { class: 'back', href: '#', text: '← All equipment' })), msg('Machine not found', 'It may have been deleted by someone else.'));
+    const u = unitLabel(e.meterUnit);
+    const wrap = h('div');
+    wrap.append(h('div', { class: 'top' }, h('a', { class: 'back', href: '#', text: '← All equipment' }), h('span', { class: 'spacer' }),
+      S.canWrite ? h('a', { class: 'btn small', href: '#edit-' + e.id, text: 'Edit' }) : null));
+
+    const hasMeter = e.meter != null && e.meter !== '';
+    wrap.append(h('div', { class: 'mhead' },
+      h('div', { class: 'mcard' }, h('div', { class: 'eyebrow', text: e.category || 'Machine' }), h('h1', { text: e.name || 'Unnamed machine' })),
+      h('button', { class: 'meter', type: 'button', 'aria-expanded': String(S.meterOpen), disabled: !S.canWrite, onclick: () => { S.meterOpen = !S.meterOpen; render(true); if (S.meterOpen) { const i = document.getElementById('meter-input'); i && i.focus(); } } },
+        h('span', { class: 'eyebrow', text: meterName(e.meterUnit) }),
+        h('b', { class: 'num', text: hasMeter ? fmtN(e.meter) : 'Set' }))));
+    if (S.meterOpen) {
+      wrap.append(h('form', { class: 'meterform', onsubmit: async (ev) => {
+        ev.preventDefault();
+        const v = numOrNull(ev.target.elements.meter.value);
+        if (v == null) { toast('Enter a number for the reading.'); return; }
+        try { await saveEq({ ...findEq(e.id), meter: v, meterDate: todayStr() }); toast('Reading saved'); S.meterOpen = false; } catch (err) { dbErr(err); }
+        document.activeElement && document.activeElement.blur(); render(true);
+      } },
+        h('label', { class: 'f' }, h('span', { text: `Current reading (${u})` }), h('input', { id: 'meter-input', name: 'meter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: hasMeter ? e.meter : '' })),
+        h('button', { class: 'primary', type: 'submit', text: 'Save' }),
+        h('button', { type: 'button', text: 'Cancel', onclick: () => { S.meterOpen = false; render(true); } }),
+        e.meterDate ? h('div', { class: 'muted', style: 'flex-basis:100%;font-size:.85rem', text: 'Last read ' + fmtDate(e.meterDate) }) : null));
+    }
+
+    const TABS = [['status', 'Status'], ['specs', 'Specs'], ['log', 'Log'], ['intervals', 'Intervals']];
+    wrap.append(h('div', { class: 'tabs', role: 'tablist' }, TABS.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), text: l, onclick: () => { S.tab = k; S.confirmIv = null; render(true); } }))));
+    wrap.append(({ status: tabStatus, specs: tabSpecs, log: tabLog, intervals: tabIntervals })[S.tab](e, u));
+    return wrap;
+  }
+
+  function tabStatus(e, u) {
+    const st = eqStatus(e);
+    const frag = h('div');
+    frag.append(h('div', { class: 'tally' },
+      h('div', null, h('b', { class: 'num', style: 'color:var(--bad)', text: st.counts.due }), h('span', { text: 'Overdue' })),
+      h('div', null, h('b', { class: 'num', style: 'color:var(--warn)', text: st.counts.soon }), h('span', { text: 'Due soon' })),
+      h('div', null, h('b', { class: 'num', style: 'color:var(--good)', text: st.counts.ok }), h('span', { text: 'Good' }))));
+    if (S.canWrite) frag.append(h('a', { class: 'btn primary big', href: '#log-' + e.id, text: '+ Log service', style: 'margin-bottom:16px' }));
+    const ivs = (e.intervals || []).map((iv, i) => ({ iv, i, s: intervalStatus(e, iv) }))
+      .sort((a, b) => (RANK[b.s.level] - RANK[a.s.level]) || ((b.s.pct || 0) - (a.s.pct || 0)) || (a.i - b.i));
+    const panel = h('div', { class: 'panel svc' }, h('h2', { text: 'Service due' }));
+    if (!ivs.length) panel.append(h('p', { class: 'muted' }, 'No service intervals yet. ', S.canWrite ? h('a', { href: '#edit-' + e.id, style: 'color:var(--good)', text: 'Add them' }) : null));
+    for (const { iv, s } of ivs) {
+      const hasMeter = e.meter != null && e.meter !== '';
+      const row = h('div', { class: 'row' },
+        h('div', { style: 'min-width:0' },
+          h('div', { class: 't', text: iv.task || 'Service' }),
+          h('div', { class: 'sub num', text: everyText(iv, u) }),
+          s.text ? h('div', { class: 'sub2 num', style: `color:var(--${s.level === 'due' ? 'bad' : s.level === 'soon' ? 'warn' : 'muted'})`, text: s.text }) : null,
+          s.pct != null ? h('div', { class: 'bar s-' + s.level }, h('i', { style: `width:${Math.round(s.pct * 100)}%` })) : null),
+        h('div', { class: 'side' }, chip(s.level),
+          S.canWrite ? h('button', { type: 'button', text: 'Done', 'aria-label': 'Mark ' + (iv.task || 'service') + ' done', onclick: () => { S.confirmIv = S.confirmIv === iv.id ? null : iv.id; render(true); } }) : null));
+      if (S.confirmIv === iv.id) {
+        row.append(h('div', { class: 'confirm' },
+          h('span', { text: `Record ${iv.task || 'this service'} as done today${hasMeter ? ` at ${fmtN(e.meter)} ${u}` : ''}?` + (hasMeter ? '' : ' Set the hour meter first to track by hours.') }),
+          h('button', { class: 'primary small', type: 'button', text: 'Record it', onclick: async (ev) => {
+            ev.target.disabled = true;
+            try { await recordService(e.id, { date: todayStr(), meter: hasMeter ? Number(e.meter) : null, done: [iv.id] }); S.confirmIv = null; toast((iv.task || 'Service') + ' recorded'); }
+            catch (err) { dbErr(err); }
+            render(true);
+          } }),
+          h('a', { class: 'btn small', href: '#log-' + e.id, text: 'Add details' }),
+          h('button', { class: 'small', type: 'button', text: 'Cancel', onclick: () => { S.confirmIv = null; render(true); } })));
+      }
+      panel.append(row);
+    }
+    frag.append(panel);
+    return frag;
+  }
+
+  function tabSpecs(e) {
+    const frag = h('div', { class: 'stack' });
+    const facts = [['Make', e.make], ['Model', e.model], ['Year', e.year], ['Category', e.category], ['Location', e.location]].filter(([, v]) => v);
+    const copyBtn = h('button', { class: 'small', type: 'button', text: 'Copy', onclick: async (ev) => {
+      try { await navigator.clipboard.writeText(e.vin); toast('VIN copied'); }
+      catch { const r = document.createRange(); r.selectNodeContents(ev.target.previousSibling); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('VIN selected. Use your copy shortcut.'); }
+    } });
+    frag.append(h('div', { class: 'panel' }, h('h2', { text: 'Machine' }),
+      h('div', { class: 'facts' },
+        h('div', { style: 'grid-column:1/-1' }, h('div', { class: 'eyebrow', text: 'VIN / Serial number' }),
+          e.vin ? h('div', { class: 'vin' }, h('span', { class: 'mono', text: e.vin }), copyBtn) : h('div', { class: 'muted', text: 'Not entered yet' })),
+        facts.map(([k, v]) => h('div', null, h('div', { class: 'eyebrow', text: k }), h('div', { class: 'v', text: v }))))));
+    const fs = e.filters || [];
+    const fp = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Filters & parts' }), S.canWrite ? h('a', { class: 'btn small', href: '#edit-' + e.id, text: fs.length ? 'Edit' : '+ Add' }) : null));
+    if (!fs.length) fp.append(h('p', { class: 'muted', style: 'margin:14px 0 0', text: 'No part numbers yet.' }));
+    for (const f of fs) fp.append(h('div', { class: 'part' },
+      h('div', { style: 'font-weight:500;min-width:0;overflow-wrap:anywhere', text: (f.qty && f.qty !== '1' ? f.qty + '× ' : '') + (f.name || 'Part') }),
+      h('div', { class: 'pn', text: f.number || '—' }),
+      (f.alt || f.notes) ? h('div', { class: 'x' }, f.alt ? h('span', null, 'Cross-ref ', h('span', { class: 'mono', text: f.alt })) : null, f.alt && f.notes ? ' · ' : '', f.notes || '') : null));
+    frag.append(fp);
+    if (e.notes) frag.append(h('div', { class: 'panel' }, h('h2', { text: 'Notes' }), h('div', { class: 'note', text: e.notes })));
+    if (S.canWrite) {
+      const logs = S.logs.filter(l => l.equipmentId === e.id);
+      const zone = h('div', { class: 'dangerzone' });
+      const idle = () => zone.replaceChildren(h('button', { class: 'danger small', type: 'button', text: 'Delete machine', onclick: ask }));
+      const ask = () => zone.replaceChildren(
+        h('span', { style: 'flex:1 1 220px', text: `Delete ${e.name || 'this machine'} and its ${logs.length} log entries for everyone? This cannot be undone.` }),
+        h('button', { class: 'danger solid small', type: 'button', text: 'Delete', onclick: async () => {
+          try { for (const l of logs) await S.db.doc('logs/' + l.id).delete(); await S.db.doc('equipment/' + e.id).delete(); toast('Machine deleted'); go(''); } catch (err) { dbErr(err); }
+        } }),
+        h('button', { class: 'small', type: 'button', text: 'Keep it', onclick: idle }));
+      idle();
+      frag.append(zone);
+    }
+    return frag;
+  }
+
+  function tabLog(e, u) {
+    const logs = S.logs.filter(l => l.equipmentId === e.id).sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.createdAt || 0) - (a.createdAt || 0));
+    const p = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Service log' }), h('span', { class: 'muted', text: logs.length + (logs.length === 1 ? ' entry' : ' entries') })));
+    if (!logs.length) p.append(h('p', { class: 'muted', style: 'margin:14px 0 0', text: S.logsLoaded ? 'Nothing logged yet. Tap Done on a service, or use Log service.' : 'Loading the log…' }));
+    for (const l of logs) {
+      const del = h('span');
+      const idle = () => del.replaceChildren(h('button', { class: 'small danger', type: 'button', text: 'Remove', onclick: () => del.replaceChildren(
+        h('button', { class: 'small danger solid', type: 'button', text: 'Remove entry', onclick: async () => { try { await S.db.doc('logs/' + l.id).delete(); toast('Entry removed'); } catch (err) { dbErr(err); } } }),
+        h('button', { class: 'small', type: 'button', text: 'Cancel', onclick: idle })) }));
+      if (S.canWrite) idle();
+      p.append(h('div', { class: 'entry' },
+        h('div', { class: 'eh' },
+          h('span', { class: 'date', text: l.date ? fmtDate(l.date) : 'No date' }),
+          numOrNull(l.meter) != null ? h('span', { class: 'num muted', text: `${fmtN(l.meter)} ${u}` }) : null,
+          l.by ? h('span', { class: 'muted', style: 'font-size:.85rem', text: 'by ' + l.by }) : null,
+          numOrNull(l.cost) != null ? h('span', { class: 'num muted', text: '$' + Number(l.cost).toFixed(2) }) : null,
+          h('span', { style: 'flex:1' }), del),
+        (l.taskNames || []).length ? h('div', { class: 'chips' }, l.taskNames.map(t => h('span', { class: 'chip', text: t }))) : null,
+        l.work ? h('p', { text: l.work }) : null,
+        l.parts ? h('p', { class: 'muted' }, 'Parts: ', l.parts) : null));
+    }
+    return p;
+  }
+
+  function tabIntervals(e, u) {
+    const ivs = e.intervals || [];
+    const p = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Intervals' }), S.canWrite ? h('a', { class: 'btn small', href: '#edit-' + e.id, text: 'Edit' }) : null));
+    if (!ivs.length) { p.append(h('p', { class: 'muted', style: 'margin:14px 0 0', text: 'No intervals yet.' })); return p; }
+    p.append(h('div', { class: 'scroll' }, h('table', null,
+      h('thead', null, h('tr', null, ['Service', 'Interval', 'Last done', 'Next due'].map(t => h('th', { text: t })))),
+      h('tbody', null, ivs.map(iv => {
+        const last = numOrNull(iv.lastMeter), em = numOrNull(iv.everyMeter), mo = numOrNull(iv.everyMonths);
+        const next = [em && last != null ? `${fmtN(last + em)} ${u}` : null, mo && iv.lastDate ? fmtDate(addMonths(iv.lastDate, mo)) : null].filter(Boolean).join(' or ');
+        return h('tr', null,
+          h('td', null, h('div', { style: 'font-weight:500', text: iv.task || 'Service' }), iv.notes ? h('div', { class: 'muted', style: 'font-size:.82rem', text: iv.notes }) : null),
+          h('td', { class: 'num', style: 'white-space:nowrap', text: everyText(iv, u).replace(/^Every /, '') }),
+          h('td', { class: 'num', text: [last != null ? `${fmtN(last)} ${u}` : null, iv.lastDate ? fmtDate(iv.lastDate) : null].filter(Boolean).join(' · ') || '—' }),
+          h('td', { class: 'num', text: next || '—' }));
+      })))));
+    return p;
+  }
+
+  // ---------- editor ----------
+  function editor(id) {
+    const existing = id ? findEq(id) : null;
+    if (id && !existing) return detail(id);
+    const e = existing ? JSON.parse(JSON.stringify(existing)) : { id: uid('e'), meterUnit: 'hrs', filters: [], intervals: [] };
+    const field = (key, label, attrs = {}, cls) => h('label', { class: 'f' + (cls ? ' ' + cls : '') }, h('span', { text: label }), h('input', { id: 'f-' + key, name: key, value: e[key] ?? '', ...attrs }));
+
+    const filtersBox = h('div', { class: 'rep' });
+    const fRow = (f = {}) => {
+      const row = h('div', { class: 'reprow', 'data-kind': 'filter' },
+        h('label', { class: 'f w2' }, h('span', { text: 'Item' }), h('input', { name: 'name', value: f.name || '', placeholder: 'Engine oil filter' })),
+        h('label', { class: 'f' }, h('span', { text: 'Part number' }), h('input', { name: 'number', class: 'mono', value: f.number || '', placeholder: 'OEM number' })),
+        h('label', { class: 'f' }, h('span', { text: 'Cross-reference' }), h('input', { name: 'alt', class: 'mono', value: f.alt || '', placeholder: 'Wix, Baldwin…' })),
+        h('label', { class: 'f' }, h('span', { text: 'Qty' }), h('input', { name: 'qty', value: f.qty || '', placeholder: '1' })),
+        h('label', { class: 'f w2' }, h('span', { text: 'Notes' }), h('input', { name: 'notes', value: f.notes || '', placeholder: 'Capacity, fluid spec…' })),
+        h('button', { class: 'small danger rm', type: 'button', text: 'Remove', onclick: () => row.remove() }));
+      filtersBox.append(row);
+    };
+    (e.filters || []).forEach(fRow);
+    if (!(e.filters || []).length) fRow();
+
+    const unitSel = h('select', { id: 'f-meterUnit', name: 'meterUnit' }, h('option', { value: 'hrs', text: 'Hours' }), h('option', { value: 'mi', text: 'Miles' }), h('option', { value: 'km', text: 'Kilometres' }));
+    unitSel.value = e.meterUnit || 'hrs';
+    const uTxt = () => unitLabel(unitSel.value);
+    const ivBox = h('div', { class: 'rep' });
+    const ivRow = (iv = {}) => {
+      const row = h('div', { class: 'reprow', 'data-kind': 'interval', 'data-id': iv.id || uid('i') },
+        h('label', { class: 'f w2' }, h('span', { text: 'Service' }), h('input', { name: 'task', value: iv.task || '', placeholder: 'Engine oil & filter' })),
+        h('label', { class: 'f' }, h('span', { class: 'u-every', text: `Every (${uTxt()})` }), h('input', { name: 'everyMeter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: iv.everyMeter ?? '' })),
+        h('label', { class: 'f' }, h('span', { text: 'Or every (months)' }), h('input', { name: 'everyMonths', type: 'number', inputmode: 'numeric', step: '1', min: '0', value: iv.everyMonths ?? '' })),
+        h('label', { class: 'f' }, h('span', { class: 'u-last', text: `Last done at (${uTxt()})` }), h('input', { name: 'lastMeter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: iv.lastMeter ?? '' })),
+        h('label', { class: 'f' }, h('span', { text: 'Last done on' }), h('input', { name: 'lastDate', type: 'date', value: iv.lastDate || '' })),
+        h('label', { class: 'f w2' }, h('span', { text: 'Notes' }), h('input', { name: 'notes', value: iv.notes || '', placeholder: 'Fluid spec, capacity…' })),
+        h('button', { class: 'small danger rm', type: 'button', text: 'Remove', onclick: () => row.remove() }));
+      ivBox.append(row);
+    };
+    (e.intervals || []).forEach(ivRow);
+    if (!(e.intervals || []).length) ivRow();
+    unitSel.addEventListener('change', () => {
+      ivBox.querySelectorAll('.u-every').forEach(s => s.textContent = `Every (${uTxt()})`);
+      ivBox.querySelectorAll('.u-last').forEach(s => s.textContent = `Last done at (${uTxt()})`);
+    });
+
+    const form = h('form', { class: 'stack', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const el = form.elements;
+      const name = el.name.value.trim();
+      if (!name) { toast('Give the machine a name.'); el.name.focus(); return; }
+      const out = { ...(existing ? findEq(existing.id) || e : e), name };
+      for (const k of ['category', 'make', 'model', 'year', 'vin', 'location']) out[k] = el[k].value.trim();
+      out.vin = out.vin.toUpperCase();
+      out.notes = el.notes.value.trim();
+      out.meterUnit = unitSel.value;
+      const m = numOrNull(el.meter.value);
+      if (m !== numOrNull(out.meter)) { out.meter = m; out.meterDate = m == null ? null : todayStr(); }
+      out.filters = [...filtersBox.querySelectorAll('[data-kind=filter]')].map(r => {
+        const g = (n) => r.querySelector(`[name=${n}]`).value.trim();
+        return { name: g('name'), number: g('number'), alt: g('alt'), qty: g('qty'), notes: g('notes') };
+      }).filter(f => f.name || f.number || f.alt);
+      out.intervals = [...ivBox.querySelectorAll('[data-kind=interval]')].map(r => {
+        const g = (n) => r.querySelector(`[name=${n}]`).value.trim();
+        return { id: r.dataset.id, task: g('task'), everyMeter: numOrNull(g('everyMeter')), everyMonths: numOrNull(g('everyMonths')), lastMeter: numOrNull(g('lastMeter')), lastDate: g('lastDate') || null, notes: g('notes') };
+      }).filter(iv => iv.task || iv.everyMeter || iv.everyMonths);
+      if (!existing) out.createdAt = Date.now();
+      const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
+      try { await saveEq(out); toast(existing ? 'Changes saved' : 'Machine added'); go('#eq-' + e.id); }
+      catch (err) { dbErr(err); btn.disabled = false; btn.textContent = 'Save'; }
+    } },
+      h('div', { class: 'panel' }, h('h2', { text: 'Machine' }),
+        h('div', { class: 'fgrid' },
+          field('name', 'Name *', { placeholder: 'e.g. 2021 John Deere 4066M', required: true, autocomplete: 'off' }, 'wide'),
+          field('category', 'Category', { placeholder: 'Tractor, truck, mower…', list: 'cats' }),
+          field('make', 'Make', { placeholder: 'John Deere' }),
+          field('model', 'Model', { placeholder: '4066M' }),
+          field('year', 'Year', { inputmode: 'numeric', placeholder: '2021' }),
+          field('vin', 'VIN / Serial number', { class: 'mono', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'VIN or PIN / serial' }, 'wide'),
+          field('location', 'Location', { placeholder: 'Main shop' }),
+          h('label', { class: 'f' }, h('span', { text: 'Meter type' }), unitSel),
+          field('meter', 'Current reading', { type: 'number', inputmode: 'decimal', step: 'any', min: '0' }),
+          h('label', { class: 'f wide' }, h('span', { text: 'Notes' }), h('textarea', { id: 'f-notes', name: 'notes', value: e.notes || '', placeholder: 'Fluid capacities, quirks, grease points…' }))),
+        h('datalist', { id: 'cats' }, ['Tractor', 'Skid steer', 'Excavator', 'Truck', 'Trailer', 'Mower', 'Generator', 'UTV', 'Loader'].map(c => h('option', { value: c })))),
+      h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Filters & parts' }), h('button', { type: 'button', class: 'small', text: '+ Add part', onclick: () => fRow() })), filtersBox),
+      h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Service intervals' }), h('button', { type: 'button', class: 'small', text: '+ Add interval', onclick: () => ivRow() })),
+        h('p', { class: 'muted', style: 'margin:14px 0 0;font-size:.88rem', text: 'Set hours, months, or both; whichever comes first counts. Fill in when it was last done so the next due point can be worked out.' }),
+        ivBox),
+      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: existing ? '#eq-' + e.id : '#', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
+    return h('div', null,
+      h('div', { class: 'top' }, h('a', { class: 'back', href: existing ? '#eq-' + e.id : '#', text: '← ' + (existing ? (existing.name || 'Machine') : 'All equipment') })),
+      h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: existing ? 'Edit machine' : 'Add equipment' }),
+      form);
+  }
+
+  // ---------- log service ----------
+  function logForm(id) {
+    const e = findEq(id);
+    if (!e) return detail(id);
+    const u = unitLabel(e.meterUnit);
+    const ivs = (e.intervals || []).map(iv => ({ iv, s: intervalStatus(e, iv) }));
+    const form = h('form', { class: 'stack', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const el = form.elements;
+      const done = [...form.querySelectorAll('input[name=task]:checked')].map(c => c.value);
+      const work = el.work.value.trim();
+      if (!done.length && !work) { toast('Tick a service or describe the work done.'); return; }
+      const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        await recordService(e.id, { date: el.date.value || todayStr(), meter: numOrNull(el.meter.value), done, work, parts: el.parts.value.trim(), cost: numOrNull(el.cost.value) });
+        toast('Service logged'); go('#eq-' + e.id);
+      } catch (err) { dbErr(err); btn.disabled = false; btn.textContent = 'Save service'; }
+    } },
+      h('div', { class: 'panel' },
+        h('div', { class: 'fgrid', style: 'padding-top:0' },
+          h('label', { class: 'f' }, h('span', { text: 'Date' }), h('input', { id: 'l-date', name: 'date', type: 'date', value: todayStr(), required: true })),
+          h('label', { class: 'f' }, h('span', { text: `${meterName(e.meterUnit)} (${u})` }), h('input', { id: 'l-meter', name: 'meter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: e.meter ?? '' })))),
+      ivs.length ? h('div', { class: 'panel' }, h('h2', { text: 'Services done' }),
+        h('div', { class: 'checks', style: 'padding-top:14px' }, ivs.map(({ iv, s }) => h('label', null,
+          h('input', { type: 'checkbox', name: 'task', value: iv.id, checked: S.confirmIv === iv.id }),
+          h('span', { style: 'flex:1;min-width:0' }, iv.task || 'Service'), chip(s.level))))) : null,
+      h('div', { class: 'panel stack' },
+        h('label', { class: 'f' }, h('span', { text: 'Work done' }), h('textarea', { id: 'l-work', name: 'work', placeholder: 'Changed oil and filter, greased loader pins…' })),
+        h('div', { class: 'fgrid', style: 'padding-top:0' },
+          h('label', { class: 'f' }, h('span', { text: 'Parts used' }), h('input', { id: 'l-parts', name: 'parts', placeholder: 'Filter part numbers, oil qty' })),
+          h('label', { class: 'f' }, h('span', { text: 'Cost ($, optional)' }), h('input', { id: 'l-cost', name: 'cost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' })))),
+      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#eq-' + e.id, text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save service' })));
+    return h('div', null,
+      h('div', { class: 'top' }, h('a', { class: 'back', href: '#eq-' + e.id, text: '← ' + (e.name || 'Machine') })),
+      h('div', { class: 'eyebrow', text: 'Log service' }),
+      h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: e.name || 'Machine' }),
+      form);
+  }
+
+  // ---------- boot ----------
+  S.view = parseHash();
+  render(true);
+  // ---------- Supabase (access by secret link key, no sign-in) ----------
+  // Tables: equipment(id text, data jsonb) and logs(id text, equipment_id text, data jsonb).
+  // Every request carries the link's key in an x-farm-key header; the database's
+  // row-level security refuses anything without the right key.
+  const NAME_KEY = 'ruxer-name';
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { } }
+  };
+  function nameView() {
+    const form = h('form', { class: 'login', onsubmit: (ev) => {
+      ev.preventDefault();
+      const n = form.elements.name.value.trim();
+      if (!n) return;
+      ls.set(NAME_KEY, n); S.myName = n; S.needName = false; render(true);
+    } },
+      h('div', { class: 'eyebrow', text: 'Equipment maintenance' }),
+      h('h1', { text: 'Ruxer Farms LLC' }),
+      h('p', { class: 'muted', style: 'margin:0', text: 'Your name goes on the services you log from this phone.' }),
+      h('label', { class: 'f' }, h('span', { text: 'Your name' }), h('input', { id: 'name', name: 'name', autocomplete: 'name', required: true, value: S.myName || '' })),
+      h('button', { class: 'primary big', type: 'submit', text: 'Continue' }));
+    return form;
+  }
+  async function loadTable(table) {
+    const { data, error } = await S.sb.from(table).select('*');
+    if (error) throw error;
+    if (table === 'equipment') { S.equipment = data.map(r => ({ ...r.data, id: r.id })); S.eqLoaded = true; }
+    else { S.logs = data.map(r => ({ ...r.data, id: r.id, equipmentId: r.equipment_id })); S.logsLoaded = true; }
+  }
+  function announce(table) { if (S.channel) S.channel.send({ type: 'broadcast', event: 'changed', payload: { table } }).catch(() => {}); }
+  // Same doc(path).set / .delete shape the rest of the app calls.
+  const store = {
+    doc(path) {
+      const [table, id] = path.split('/');
+      return {
+        async set(data) {
+          const row = table === 'logs' ? { id, equipment_id: data.equipmentId, data } : { id, data };
+          const { error } = await S.sb.from(table).upsert(row);
+          if (error) throw error;
+          await loadTable(table); render(); announce(table);
+        },
+        async delete() {
+          const { error } = await S.sb.from(table).delete().eq('id', id);
+          if (error) throw error;
+          await loadTable(table); render(); announce(table);
+        }
+      };
+    }
+  };
+  const refreshAll = () => Promise.all([loadTable('equipment'), loadTable('logs')]).then(() => { S.offline = false; render(); });
+  async function startData() {
+    S.db = store;
+    try { await refreshAll(); }
+    catch (e) { console.error(e); S.eqLoaded = true; S.offline = true; render(); }
+    let t;
+    S.channel = S.sb.channel('ruxer-changes', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'changed' }, ({ payload }) => {
+        clearTimeout(t);
+        t = setTimeout(() => loadTable(payload && payload.table === 'logs' ? 'logs' : 'equipment').then(() => render()).catch(console.error), 200);
+      })
+      .subscribe();
+    setInterval(() => { if (document.visibilityState === 'visible') refreshAll().catch(() => {}); }, 60000);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && S.db) refreshAll().catch(() => {});
+  });
+
+  (async () => {
+    const cfg = window.RUXER_CONFIG || {};
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || !window.supabase) { S.setupMissing = true; render(true); return; }
+    const key = new URLSearchParams(location.search).get('k') || '';
+    if (!key) { S.badLink = true; render(true); return; }
+    S.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { 'x-farm-key': key } }
+    });
+    const { data: ok, error } = await S.sb.rpc('farm_key_ok');
+    if (error || ok !== true) { S.badLink = !error; S.offline = !!error; if (error) console.error(error); if (!error) { render(true); return; } }
+    S.myName = ls.get(NAME_KEY) || '';
+    S.needName = !S.myName;
+    render(true);
+    startData();
+  })();
+})();
+</script>
+</body>
+</html>
