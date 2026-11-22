@@ -692,7 +692,7 @@
     const parentSel = h('select', { id: 'f-parentId' }, h('option', { value: '', text: 'Not attached (its own machine)' }),
       S.equipment.filter(x => x.id !== e.id && !x.parentId && !childrenOf(e.id).some(k => k.id === x.id)).map(x => h('option', { value: x.id, text: x.name || 'Machine' })));
     parentSel.value = e.parentId || '';
-    const unitSel = h('select', { id: 'f-meterUnit' }, h('option', { value: 'hrs', text: 'Hours' }), h('option', { value: 'mi', text: 'Miles' }), h('option', { value: 'km', text: 'Kilometres' }), h('option', { value: 'parent', text: "Uses the tractor's hours" }));
+    const unitSel = h('select', { id: 'f-meterUnit' }, h('option', { value: 'hrs', text: 'Hours' }), h('option', { value: 'mi', text: 'Miles' }), h('option', { value: 'parent', text: "Uses the tractor's hours" }));
     unitSel.value = e.meterUnit || 'hrs';
     const meterField = field('Current reading', inp('meter', { type: 'number', inputmode: 'decimal', step: 'any', min: '0' }));
     const syncMeter = () => {
