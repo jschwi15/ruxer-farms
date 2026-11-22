@@ -352,55 +352,12 @@ tr:last-child td { border-bottom: 0; }
   $app.addEventListener('focusout', () => setTimeout(() => { if (S.pendingRender) render(); }, 0));
   const msg = (t, p) => h('div', { class: 'empty' }, h('h2', { text: t }), h('p', { text: p }));
 
-  // ---------- add to home screen ----------
-  const UA = navigator.userAgent;
-  const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const IS_STANDALONE = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  let deferredInstall = null;
-  window.addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); deferredInstall = ev; if (S.view.name === 'list') render(); });
-  function browserName() {
-    if (/FBAN|FBAV|Instagram|Line\/|GSA\/|Snapchat|Twitter|LinkedInApp|MicroMessenger/.test(UA)) return 'inapp';
-    if (navigator.brave) return 'brave';
-    if (/CriOS/.test(UA)) return 'chrome';
-    if (/FxiOS/.test(UA)) return 'firefox';
-    if (/EdgiOS/.test(UA)) return 'edge';
-    return IS_IOS ? 'safari' : 'other';
-  }
-  function installCard() {
-    const b = browserName();
-    const share = h('b', { text: 'Share' });
-    const STEPS = {
-      safari: ['Tap the ', share, ' button (square with an arrow ↑) at the bottom of the screen. If you only see an address bar, tap ⋯ first.',
-        h('br'), 'Scroll down and tap ', h('b', { text: 'Add to Home Screen' }), '. Tap ', h('b', { text: 'View More' }), ' if it is hidden.', h('br'), 'Tap ', h('b', { text: 'Add' }), '.'],
-      chrome: ['Tap the ', share, ' button (square with an arrow ↑) at the right end of the address bar.', h('br'),
-        'Tap ', h('b', { text: 'Add to Home Screen' }), '. If it is missing, scroll down, tap ', h('b', { text: 'Edit Actions' }), ' and add it.', h('br'), 'Tap ', h('b', { text: 'Add' }), '.'],
-      brave: ['Tap the ', h('b', { text: '⋯' }), ' menu at the bottom right, then ', share, '.', h('br'),
-        'Tap ', h('b', { text: 'Add to Home Screen' }), '. If it is missing, scroll down, tap ', h('b', { text: 'Edit Actions' }), ' and add it.', h('br'), 'Tap ', h('b', { text: 'Add' }), '.'],
-      firefox: ['Tap the ', h('b', { text: '☰' }), ' menu, then ', share, ', then ', h('b', { text: 'Add to Home Screen' }), '.'],
-      edge: ['Tap the ', h('b', { text: '⋯' }), ' menu, then ', share, ', then ', h('b', { text: 'Add to Home Screen' }), '.'],
-      inapp: ['This page is open inside another app (like Messages preview, Facebook or Gmail), which cannot add icons.', h('br'),
-        'Tap ', h('b', { text: 'Copy link' }), ' below, open ', h('b', { text: 'Safari' }), ', paste it into the address bar, then come back to this button.'],
-      other: ['Open the browser menu (⋮) and tap ', h('b', { text: 'Add to Home screen' }), ' or ', h('b', { text: 'Install app' }), '.']
-    };
-    const copy = h('button', { class: 'small', type: 'button', text: 'Copy link', onclick: async () => {
-      try { await navigator.clipboard.writeText(location.href.split('#')[0]); toast('Link copied'); } catch { toast('Copy the address from the address bar instead.'); }
-    } });
-    return h('div', { class: 'panel', style: 'margin-bottom:16px;display:grid;gap:12px' },
-      h('div', { class: 'hd', style: 'padding-bottom:10px' }, h('h2', { text: 'Add to Home Screen' }), h('button', { class: 'small', type: 'button', text: 'Close', onclick: () => { S.showInstall = false; render(true); } })),
-      deferredInstall ? h('button', { class: 'primary', type: 'button', text: 'Install app', onclick: async () => { deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch { } deferredInstall = null; S.showInstall = false; render(true); } }) : null,
-      h('p', { style: 'margin:0;line-height:1.7' }, STEPS[b] || STEPS.other),
-      h('p', { class: 'muted', style: 'margin:0;font-size:.85rem' }, 'The icon keeps your full link. iPhone needs iOS 16.4 or newer to add icons from Chrome or Brave; Safari always works. The first open from the icon asks for your name once.'),
-      h('div', { class: 'actions', style: 'display:flex;gap:8px;flex-wrap:wrap' }, copy));
-  }
-
   // ---------- list ----------
   function list() {
     const eqs = S.equipment;
     const frag = h('div', null, h('div', { class: 'top' }, h('a', { class: 'brand', href: '#', text: 'Ruxer Farms LLC' }), h('span', { class: 'spacer' }),
-      !IS_STANDALONE ? h('button', { class: 'small', type: 'button', text: 'Add to phone', 'aria-expanded': String(!!S.showInstall), onclick: () => { S.showInstall = !S.showInstall; render(true); } }) : null,
       S.canWrite && eqs.length ? h('a', { class: 'btn primary small', href: '#new', text: '+ Add' }) : null,
       h('button', { class: 'small', type: 'button', text: S.myName || 'Name', title: 'Change your name', onclick: () => { S.needName = true; render(true); } })));
-    if (S.showInstall && !IS_STANDALONE) frag.append(installCard());
     if (!eqs.length) {
       frag.append(h('div', { class: 'empty' },
         h('div', { class: 'eyebrow', text: 'Nothing on the log yet' }),
@@ -806,7 +763,6 @@ tr:last-child td { border-bottom: 0; }
     });
     const { data: ok, error } = await S.sb.rpc('farm_key_ok');
     if (error || ok !== true) { S.badLink = !error; S.offline = !!error; if (error) console.error(error); if (!error) { render(true); return; } }
-    if (!IS_STANDALONE && (IS_IOS || /Android/.test(UA)) && !ls.get('ruxer-install-seen')) { S.showInstall = true; ls.set('ruxer-install-seen', '1'); }
     S.myName = ls.get(NAME_KEY) || '';
     S.needName = !S.myName;
     render(true);
