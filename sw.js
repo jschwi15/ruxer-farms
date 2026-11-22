@@ -1,7 +1,7 @@
 /* Ruxer Farms service worker: keeps the app usable with no signal and shows
    due-soon alerts sent by the server. Data requests to Supabase are never
    cached here; the app keeps its own saved copy of the data. */
-const CACHE = 'ruxer-shell-v11';
+const CACHE = 'ruxer-shell-v12';
 const SHELL = [
   './',
   './index.html',

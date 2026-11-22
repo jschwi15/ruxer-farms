@@ -655,7 +655,7 @@
     const listBox = h('div', { class: 'stack' });
     const draw = () => {
       const q = S.invSearch.trim().toLowerCase();
-      const shown = items.filter(i => !q || [i.name, i.category, i.partNumber, i.location, i.notes].join(' ').toLowerCase().includes(q));
+      const shown = items.filter(i => !q || [i.name, i.category, i.partNumber, i.notes].join(' ').toLowerCase().includes(q));
       const groups = {};
       for (const i of shown) (groups[i.category || 'Other'] ||= []).push(i);
       const order = [...INV_CATS, ...Object.keys(groups).filter(c => !INV_CATS.includes(c))];
@@ -663,7 +663,7 @@
         groups[c].sort((a, b) => Number(itemLow(b)) - Number(itemLow(a)) || String(a.name).localeCompare(String(b.name))).map(invRow))));
       if (!shown.length) listBox.append(h('p', { class: 'muted', text: 'Nothing matches that search.' }));
     };
-    if (items.length > 5) wrap.append(h('div', { class: 'toolbar' }, h('input', { id: 'inv-search', type: 'search', placeholder: 'Search name, part number, location', value: S.invSearch, 'aria-label': 'Search inventory', oninput: (ev) => { S.invSearch = ev.target.value; draw(); } })));
+    if (items.length > 5) wrap.append(h('div', { class: 'toolbar' }, h('input', { id: 'inv-search', type: 'search', placeholder: 'Search name or part number', value: S.invSearch, 'aria-label': 'Search inventory', oninput: (ev) => { S.invSearch = ev.target.value; draw(); } })));
     draw();
     wrap.append(listBox);
     return wrap;
@@ -673,7 +673,7 @@
     return h('div', { class: 'invrow' },
       h('a', { class: 'invname', href: '#item-' + i.id },
         h('b', { text: i.name || 'Item' }),
-        h('span', { class: 'muted', text: [i.partNumber, i.location, numOrNull(i.minQty) != null ? `reorder at ${fmtN(i.minQty)}` : null].filter(Boolean).join(' · ') })),
+        h('span', { class: 'muted', text: [i.partNumber, numOrNull(i.minQty) != null ? `reorder at ${fmtN(i.minQty)}` : null].filter(Boolean).join(' · ') })),
       h('div', { class: 'invqty' },
         h('button', { type: 'button', class: 'qbtn', 'aria-label': `Use one ${i.name}`, text: '−', onclick: () => adjustItem(i.id, -1) }),
         h('div', { class: 'qv' }, h('b', { class: 'num', style: lowNow ? 'color:var(--bad)' : '', text: fmtN(numOrNull(i.qty) ?? 0) }), h('span', { class: 'muted', text: i.unit || '' })),
@@ -693,7 +693,7 @@
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
       const g = (k) => form.querySelector('#n-' + k).value.trim();
-      const out = { ...it, name: g('name'), category: catSel.value, qty: numOrNull(g('qty')) ?? 0, unit: g('unit'), minQty: numOrNull(g('minQty')), location: g('location'), partNumber: g('partNumber'), dealerId: dealerSel.value || null, notes: g('notes') };
+      const out = { ...it, name: g('name'), category: catSel.value, qty: numOrNull(g('qty')) ?? 0, unit: g('unit'), minQty: numOrNull(g('minQty')), partNumber: g('partNumber'), dealerId: dealerSel.value || null, notes: g('notes') };
       if (!out.name) { toast('Give the item a name.'); return; }
       try { await action(ex ? 'Item saved' : 'Item added', () => put('inventory', out)); go('#inventory'); } catch (err) { showErr(err); }
     } },
@@ -703,7 +703,6 @@
         field('Unit', inp('unit', { list: 'units', placeholder: 'tubes, gal, qt, each' })),
         field('On hand', inp('qty', { type: 'number', inputmode: 'decimal', step: 'any', min: '0' })),
         field('Reorder at (optional)', inp('minQty', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', placeholder: 'e.g. 5' })),
-        field('Where it is kept', inp('location', { placeholder: 'Shop shelf 2' })),
         h('div', { class: 'f' }, h('span', { class: 'flabel', text: 'Part number' }), h('div', { class: 'inrow' }, pn, h('button', { type: 'button', class: 'small scanbtn', text: '📷', 'aria-label': 'Scan part number from a photo', onclick: () => scanInto(pn, 'part', null) }))),
         field('Buy from', dealerSel),
         field('Notes', inp('notes', { placeholder: 'Size, spec, which machines use it' }), 'wide')),
@@ -1461,8 +1460,8 @@
         h('button', { type: 'button', text: 'Fuel log (spreadsheet)', onclick: () => exportFuelCsv() }),
         h('button', { type: 'button', text: 'Equipment list (spreadsheet)', onclick: () => exportEquipmentCsv() }),
         h('button', { type: 'button', text: 'Fuel tank log (spreadsheet)', onclick: () => exportTankCsv() }),
-        h('button', { type: 'button', text: 'Inventory (spreadsheet)', onclick: () => shareFile(`ruxer-inventory-${stamp()}.csv`, csv([['Item', 'Category', 'On hand', 'Unit', 'Reorder at', 'Location', 'Part number', 'Buy from', 'Notes'],
-          ...S.inventory.map(i => [i.name, i.category, i.qty, i.unit, i.minQty, i.location, i.partNumber, (findDealer(i.dealerId) || {}).name, i.notes])]), 'text/csv') }),
+        h('button', { type: 'button', text: 'Inventory (spreadsheet)', onclick: () => shareFile(`ruxer-inventory-${stamp()}.csv`, csv([['Item', 'Category', 'On hand', 'Unit', 'Reorder at', 'Part number', 'Buy from', 'Notes'],
+          ...S.inventory.map(i => [i.name, i.category, i.qty, i.unit, i.minQty, i.partNumber, (findDealer(i.dealerId) || {}).name, i.notes])]), 'text/csv') }),
         h('button', { type: 'button', text: 'Restore from backup…', onclick: () => fileIn.click() })),
       fileIn, restoreBox));
     // sync
