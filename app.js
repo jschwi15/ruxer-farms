@@ -1733,6 +1733,22 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.sb && !S.needName) flush().then(() => loadAll()); });
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(err => console.error('Service worker', err));
 
+  // Hidden user log: records who opened the app and on what (read only in Supabase).
+  function logVisit() {
+    try {
+      const last = Number(ls.get('ruxer-visit-at') || 0);
+      if (Date.now() - last < 30 * 60 * 1000) return;
+      let did = ls.get('ruxer-device');
+      if (!did) { did = Math.random().toString(36).slice(2, 10); ls.set('ruxer-device', did); }
+      const ua = navigator.userAgent;
+      const dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'Other';
+      const br = /Brave/.test(ua) || navigator.brave ? 'Brave' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /FxiOS|Firefox/.test(ua) ? 'Firefox' : /EdgiOS|Edg/.test(ua) ? 'Edge' : /Safari/.test(ua) ? 'Safari' : '';
+      const home = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+      S.sb.rpc('ruxer_log_visit', { p_name: S.myName || '', p_device: dev + (br ? ' · ' + br : ''), p_mode: home ? 'home screen' : 'browser', p_device_id: did })
+        .then(({ error }) => { if (!error) ls.set('ruxer-visit-at', String(Date.now())); }, () => {});
+    } catch { }
+  }
+
   (async () => {
     if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) { S.setupMissing = true; render(true); return; }
     if (!KEY) { S.badLink = true; render(true); return; }
@@ -1754,6 +1770,8 @@
       const { data: ok, error } = await S.sb.rpc('farm_key_ok');
       if (!error && ok !== true) { S.badLink = true; render(true); return; }
     } catch { }
+    logVisit();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') logVisit(); });
     await flush();
     await loadAll();
     let t;
