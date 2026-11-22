@@ -8,7 +8,7 @@
   const CFG = window.RUXER_CONFIG || {};
   const KEY = new URLSearchParams(location.search).get('k') || '';
   const S = {
-    sb: null, myName: '', equipment: [], logs: [], contacts: [], tanks: [],
+    sb: null, myName: '', equipment: [], logs: [], contacts: [], tanks: [], inventory: [], invSearch: '',
     loaded: false, offline: false, outbox: [], view: { name: 'list' }, tab: 'status',
     meterOpen: false, quickMeter: null, confirmIv: null, formShown: false, pendingRender: false, search: ''
   };
@@ -126,9 +126,9 @@
   const alertHours = () => numOrNull(ls.get('ruxer-alert-hours')) ?? 30;
 
   // ---------- data: Supabase + offline outbox + undo ----------
-  const TABLES = ['equipment', 'logs', 'contacts', 'tanks'];
-  const listOf = (t) => t === 'equipment' ? S.equipment : t === 'logs' ? S.logs : t === 'tanks' ? S.tanks : S.contacts;
-  function setList(t, arr) { if (t === 'equipment') S.equipment = arr; else if (t === 'logs') S.logs = arr; else if (t === 'tanks') S.tanks = arr; else S.contacts = arr; }
+  const TABLES = ['equipment', 'logs', 'contacts', 'tanks', 'inventory'];
+  const listOf = (t) => t === 'equipment' ? S.equipment : t === 'logs' ? S.logs : t === 'tanks' ? S.tanks : t === 'inventory' ? S.inventory : S.contacts;
+  function setList(t, arr) { if (t === 'equipment') S.equipment = arr; else if (t === 'logs') S.logs = arr; else if (t === 'tanks') S.tanks = arr; else if (t === 'inventory') S.inventory = arr; else S.contacts = arr; }
   function toRow(t, obj) {
     const data = clone(obj); delete data.id;
     return t === 'logs' ? { id: obj.id, equipment_id: obj.equipmentId || '', data } : { id: obj.id, data };
@@ -139,9 +139,9 @@
     if (op.op === 'put') arr.push(fromRow(op.table, op.row));
     setList(op.table, arr);
   }
-  function saveCache() { ls.set('ruxer-cache', JSON.stringify({ equipment: S.equipment, logs: S.logs, contacts: S.contacts, tanks: S.tanks, at: Date.now() })); }
+  function saveCache() { ls.set('ruxer-cache', JSON.stringify({ equipment: S.equipment, logs: S.logs, contacts: S.contacts, tanks: S.tanks, inventory: S.inventory, at: Date.now() })); }
   function loadCache() {
-    try { const c = JSON.parse(ls.get('ruxer-cache') || 'null'); if (c) { S.equipment = c.equipment || []; S.logs = c.logs || []; S.contacts = c.contacts || []; S.tanks = c.tanks || []; S.cacheAt = c.at; return true; } } catch { }
+    try { const c = JSON.parse(ls.get('ruxer-cache') || 'null'); if (c) { S.equipment = c.equipment || []; S.logs = c.logs || []; S.contacts = c.contacts || []; S.tanks = c.tanks || []; S.inventory = c.inventory || []; S.cacheAt = c.at; return true; } } catch { }
     return false;
   }
   const saveOutbox = () => ls.set('ruxer-outbox', JSON.stringify(S.outbox));
@@ -223,6 +223,9 @@
     if ((m = s.match(/^hist-([A-Za-z0-9]+)$/))) return { name: 'history', id: m[1] };
     if (s === 'history') return { name: 'history', id: null };
     if (s === 'settings') return { name: 'settings' };
+    if (s === 'inventory') return { name: 'inventory' };
+    if (s === 'item-new') return { name: 'item', id: null };
+    if ((m = s.match(/^item-([A-Za-z0-9]+)$/))) return { name: 'item', id: m[1] };
     if (s === 'tank-new') return { name: 'tankedit', id: null };
     if ((m = s.match(/^tankedit-([A-Za-z0-9]+)$/))) return { name: 'tankedit', id: m[1] };
     if ((m = s.match(/^tank-([A-Za-z0-9]+)$/))) return { name: 'tank', id: m[1] };
@@ -238,7 +241,7 @@
     render(true); window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
-  const FORM_VIEWS = ['edit', 'log', 'dealer', 'settings', 'tankedit'];
+  const FORM_VIEWS = ['edit', 'log', 'dealer', 'settings', 'tankedit', 'item'];
   function render(force) {
     const v = S.view;
     if (!force) {
@@ -259,6 +262,8 @@
     else if (v.name === 'settings') { node = settingsView(); S.formShown = true; }
     else if (v.name === 'dealers') node = dealersView();
     else if (v.name === 'dealer') { node = dealerForm(v.id); S.formShown = true; }
+    else if (v.name === 'inventory') node = inventoryView();
+    else if (v.name === 'item') { node = itemForm(v.id); S.formShown = true; }
     else if (v.name === 'tank') node = tankView(v.id);
     else if (v.name === 'tankedit') { node = tankForm(v.id); S.formShown = true; }
     else node = list();
@@ -277,6 +282,7 @@
       let n = 0;
       for (const e of S.equipment) { const c = eqStatus(e).counts; n += c.due + c.soon; }
       for (const t of S.tanks) if (tankState(t).low) n++;
+      n += S.inventory.filter(itemLow).length;
       if (n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {});
     } catch { }
   }
@@ -303,6 +309,7 @@
     const frag = h('div', null, h('div', { class: 'top' },
       h('a', { class: 'brand', href: '#', text: 'Ruxer Farms' }), h('span', { class: 'spacer' }),
       tops.length ? h('a', { class: 'btn primary small', href: '#new', text: '+ Add' }) : null,
+      h('a', { class: 'btn small', href: '#inventory' }, 'Inventory', S.inventory.some(itemLow) ? h('span', { class: 'dot', 'aria-label': 'items low' }) : null),
       h('a', { class: 'btn small', href: '#settings', text: 'Settings' })));
     if (!tops.length) {
       frag.append(h('div', { class: 'empty' },
@@ -622,6 +629,96 @@
           h('td', { class: 'num', text: next || '—' }));
       })))));
     return p;
+  }
+
+  // ---------- inventory ----------
+  const INV_CATS = ['Grease', 'Oil & fluids', 'Filters', 'Parts', 'Belts & hoses', 'Shop supplies', 'Other'];
+  const findItem = (id) => S.inventory.find(i => i.id === id);
+  const itemLow = (i) => numOrNull(i.minQty) != null && (numOrNull(i.qty) ?? 0) <= numOrNull(i.minQty);
+  const invTimers = {};
+  function adjustItem(id, delta) {
+    const it = findItem(id); if (!it) return;
+    const next = Math.max(0, Math.round(((numOrNull(it.qty) ?? 0) + delta) * 100) / 100);
+    applyLocal({ op: 'put', table: 'inventory', row: toRow('inventory', { ...it, qty: next }) });
+    render(true);
+    // Save once the taps stop, so a run of taps is a single change.
+    clearTimeout(invTimers[id]);
+    invTimers[id] = setTimeout(() => { const cur = findItem(id); if (cur) put('inventory', { ...cur, updatedBy: S.myName }, false).catch(showErr); }, 900);
+  }
+  function inventoryView() {
+    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment'), h('span', { class: 'spacer' }), h('a', { class: 'btn primary small', href: '#item-new', text: '+ Add item' })),
+      h('h1', { style: 'font-size:2rem;margin-bottom:14px', text: 'Inventory' }));
+    const items = S.inventory.slice();
+    if (!items.length) { wrap.append(msg('Nothing in inventory yet', 'Add grease, oil, filters and other supplies you keep on hand. Set a reorder amount and the item shows Low when you get down to it.')); return wrap; }
+    const low = items.filter(itemLow);
+    if (low.length) wrap.append(h('div', { class: 'banner', style: 'color:var(--bad)' }, h('b', { text: `${low.length} item${low.length === 1 ? '' : 's'} low: ` }), low.map(i => i.name).join(', ')));
+    const listBox = h('div', { class: 'stack' });
+    const draw = () => {
+      const q = S.invSearch.trim().toLowerCase();
+      const shown = items.filter(i => !q || [i.name, i.category, i.partNumber, i.location, i.notes].join(' ').toLowerCase().includes(q));
+      const groups = {};
+      for (const i of shown) (groups[i.category || 'Other'] ||= []).push(i);
+      const order = [...INV_CATS, ...Object.keys(groups).filter(c => !INV_CATS.includes(c))];
+      listBox.replaceChildren(...order.filter(c => groups[c]).map(c => h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: c }), h('span', { class: 'muted', text: String(groups[c].length) })),
+        groups[c].sort((a, b) => Number(itemLow(b)) - Number(itemLow(a)) || String(a.name).localeCompare(String(b.name))).map(invRow))));
+      if (!shown.length) listBox.append(h('p', { class: 'muted', text: 'Nothing matches that search.' }));
+    };
+    if (items.length > 5) wrap.append(h('div', { class: 'toolbar' }, h('input', { id: 'inv-search', type: 'search', placeholder: 'Search name, part number, location', value: S.invSearch, 'aria-label': 'Search inventory', oninput: (ev) => { S.invSearch = ev.target.value; draw(); } })));
+    draw();
+    wrap.append(listBox);
+    return wrap;
+  }
+  function invRow(i) {
+    const lowNow = itemLow(i);
+    return h('div', { class: 'invrow' },
+      h('a', { class: 'invname', href: '#item-' + i.id },
+        h('b', { text: i.name || 'Item' }),
+        h('span', { class: 'muted', text: [i.partNumber, i.location, numOrNull(i.minQty) != null ? `reorder at ${fmtN(i.minQty)}` : null].filter(Boolean).join(' · ') })),
+      h('div', { class: 'invqty' },
+        h('button', { type: 'button', class: 'qbtn', 'aria-label': `Use one ${i.name}`, text: '−', onclick: () => adjustItem(i.id, -1) }),
+        h('div', { class: 'qv' }, h('b', { class: 'num', style: lowNow ? 'color:var(--bad)' : '', text: fmtN(numOrNull(i.qty) ?? 0) }), h('span', { class: 'muted', text: i.unit || '' })),
+        h('button', { type: 'button', class: 'qbtn', 'aria-label': `Add one ${i.name}`, text: '+', onclick: () => adjustItem(i.id, 1) })),
+      lowNow ? h('span', { class: 'chipst s-due invlow', text: 'Low' }) : null);
+  }
+  function itemForm(id) {
+    const ex = id ? findItem(id) : null;
+    if (id && !ex) return msg('Item not found', 'It may have been deleted.');
+    const it = ex ? clone(ex) : { id: uid('n'), category: 'Grease', qty: 0, unit: '' };
+    const inp = (k, attrs = {}) => h('input', { id: 'n-' + k, value: it[k] ?? '', ...attrs });
+    const catSel = h('select', { id: 'n-category' }, INV_CATS.map(c => h('option', { value: c, text: c })));
+    catSel.value = INV_CATS.includes(it.category) ? it.category : 'Other';
+    const dealerSel = h('select', { id: 'n-dealerId' }, h('option', { value: '', text: 'None' }), S.contacts.map(d => h('option', { value: d.id, text: d.name || 'Dealer' })));
+    dealerSel.value = it.dealerId || '';
+    const pn = inp('partNumber', { class: 'mono', placeholder: 'Optional' });
+    const form = h('form', { class: 'stack', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const g = (k) => form.querySelector('#n-' + k).value.trim();
+      const out = { ...it, name: g('name'), category: catSel.value, qty: numOrNull(g('qty')) ?? 0, unit: g('unit'), minQty: numOrNull(g('minQty')), location: g('location'), partNumber: g('partNumber'), dealerId: dealerSel.value || null, notes: g('notes') };
+      if (!out.name) { toast('Give the item a name.'); return; }
+      try { await action(ex ? 'Item saved' : 'Item added', () => put('inventory', out)); go('#inventory'); } catch (err) { showErr(err); }
+    } },
+      h('div', { class: 'panel' }, h('div', { class: 'fgrid', style: 'padding-top:0' },
+        field('Item name *', inp('name', { required: true, placeholder: 'e.g. John Deere Grease-Gard tubes' }), 'wide'),
+        field('Category', catSel),
+        field('Unit', inp('unit', { list: 'units', placeholder: 'tubes, gal, qt, each' })),
+        field('On hand', inp('qty', { type: 'number', inputmode: 'decimal', step: 'any', min: '0' })),
+        field('Reorder at (optional)', inp('minQty', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', placeholder: 'e.g. 5' })),
+        field('Where it is kept', inp('location', { placeholder: 'Shop shelf 2' })),
+        h('div', { class: 'f' }, h('span', { class: 'flabel', text: 'Part number' }), h('div', { class: 'inrow' }, pn, h('button', { type: 'button', class: 'small scanbtn', text: '📷', 'aria-label': 'Scan part number from a photo', onclick: () => scanInto(pn, 'part', null) }))),
+        field('Buy from', dealerSel),
+        field('Notes', inp('notes', { placeholder: 'Size, spec, which machines use it' }), 'wide')),
+        h('datalist', { id: 'units' }, ['tubes', 'gal', 'qt', 'each', 'cases', 'boxes', 'lb', 'ft'].map(u => h('option', { value: u })))),
+      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#inventory', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
+    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#inventory', 'Inventory')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit item' : 'Add item' }), form);
+    if (ex) {
+      const zone = h('div', { class: 'dangerzone' });
+      const idle = () => zone.replaceChildren(h('button', { class: 'danger small', type: 'button', text: 'Delete item', onclick: () => zone.replaceChildren(
+        h('span', { style: 'flex:1 1 200px', text: `Delete ${ex.name}? You can undo right after.` }),
+        h('button', { class: 'danger solid small', type: 'button', text: 'Delete', onclick: async () => { try { await action('Item deleted', () => del('inventory', ex.id)); go('#inventory'); } catch (err) { showErr(err); } } }),
+        h('button', { class: 'small', type: 'button', text: 'Keep it', onclick: idle })) }));
+      idle(); wrap.append(zone);
+    }
+    return wrap;
   }
 
   // ---------- fuel tanks ----------
@@ -1215,6 +1312,7 @@
       const parts = changed.map(k => k === 'meter' ? `hours ${b.meter ?? '—'} → ${a.meter ?? '—'}` : (FIELD_NAMES[k] || k));
       return `${d.name || 'Machine'}: changed ${parts.join(', ') || 'details'}`;
     }
+    if (hrow.table_name === 'inventory') return hrow.action === 'insert' ? `Inventory: added ${d.name || 'item'}` : hrow.action === 'delete' ? `Inventory: deleted ${d.name || 'item'}` : (b && a && b.qty !== a.qty ? `Inventory: ${d.name} ${b.qty ?? 0} → ${a.qty ?? 0} ${d.unit || ''}` : `Inventory: edited ${d.name || 'item'}`);
     if (hrow.table_name === 'tanks') return hrow.action === 'insert' ? `Added tank ${d.name || ''}` : hrow.action === 'delete' ? `Deleted tank ${d.name || ''}` : `Edited tank ${d.name || ''} (${d.capacity ?? '—'} gal capacity, reorder at ${d.alertAt ?? '—'})`;
     if (hrow.table_name === 'logs' && (d.kind === 'delivery' || d.kind === 'tanklevel')) {
       const tn = (findTank(d.equipmentId) || {}).name || 'Tank';
@@ -1363,6 +1461,8 @@
         h('button', { type: 'button', text: 'Fuel log (spreadsheet)', onclick: () => exportFuelCsv() }),
         h('button', { type: 'button', text: 'Equipment list (spreadsheet)', onclick: () => exportEquipmentCsv() }),
         h('button', { type: 'button', text: 'Fuel tank log (spreadsheet)', onclick: () => exportTankCsv() }),
+        h('button', { type: 'button', text: 'Inventory (spreadsheet)', onclick: () => shareFile(`ruxer-inventory-${stamp()}.csv`, csv([['Item', 'Category', 'On hand', 'Unit', 'Reorder at', 'Location', 'Part number', 'Buy from', 'Notes'],
+          ...S.inventory.map(i => [i.name, i.category, i.qty, i.unit, i.minQty, i.location, i.partNumber, (findDealer(i.dealerId) || {}).name, i.notes])]), 'text/csv') }),
         h('button', { type: 'button', text: 'Restore from backup…', onclick: () => fileIn.click() })),
       fileIn, restoreBox));
     // sync
@@ -1388,7 +1488,7 @@
   const eqName = (id) => (findEq(id) || {}).name || '';
   function exportBackup() {
     const data = { app: 'ruxer-farms', version: 2, exportedAt: new Date().toISOString(),
-      equipment: S.equipment.map(o => toRow('equipment', o)), logs: S.logs.map(o => toRow('logs', o)), contacts: S.contacts.map(o => toRow('contacts', o)), tanks: S.tanks.map(o => toRow('tanks', o)) };
+      equipment: S.equipment.map(o => toRow('equipment', o)), logs: S.logs.map(o => toRow('logs', o)), contacts: S.contacts.map(o => toRow('contacts', o)), tanks: S.tanks.map(o => toRow('tanks', o)), inventory: S.inventory.map(o => toRow('inventory', o)) };
     shareFile(`ruxer-farms-backup-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
   }
   function exportServiceCsv() {
