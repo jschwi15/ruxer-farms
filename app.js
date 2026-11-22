@@ -54,7 +54,7 @@
   let toastTimer;
   function toast(msg, action) {
     clearTimeout(toastTimer);
-    $toast.replaceChildren(h('span', { text: msg }), action ? h('button', { type: 'button', class: 'toastbtn', text: action.label, onclick: () => { $toast.hidden = true; action.run(); } }) : null);
+    $toast.replaceChildren(...[h('span', { text: msg }), action ? h('button', { type: 'button', class: 'toastbtn', text: action.label, onclick: () => { $toast.hidden = true; action.run(); } }) : null].filter(Boolean));
     $toast.hidden = false;
     toastTimer = setTimeout(() => { $toast.hidden = true; }, action ? 7000 : 2800);
   }
