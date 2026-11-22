@@ -330,7 +330,6 @@
     if (/CriOS/.test(ua)) return 'chrome';
     if (/FxiOS/.test(ua)) return 'firefox';
     if (/EdgiOS/.test(ua)) return 'edge';
-    if (navigator.brave) return 'brave';
     return 'safari';
   }
   let installHiddenThisVisit = false;
@@ -357,7 +356,6 @@
     const steps = {
       safari: [[ 'Tap the Share button ', share, ' at the bottom of the screen (on some iPhones it is in the ⋯ menu next to the address).' ], [ 'Scroll down and tap ', h('b', { text: 'Add to Home Screen' }), '.' ], [ 'Leave ', h('b', { text: 'Open as Web App' }), ' on and tap ', h('b', { text: 'Add' }), '.' ]],
       chrome: [[ 'Tap the Share button ', share, ' at the top right, in the address bar.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '. If you do not see it, tap ', h('b', { text: 'Edit Actions' }), ' and add it.' ], [ 'Tap ', h('b', { text: 'Add' }), '.' ]],
-      brave: [[ 'Tap the ', h('b', { text: '⋯' }), ' menu at the bottom right, then ', h('b', { text: 'Open in Safari' }), '. Brave on iPhone cannot add home-screen apps.' ], [ 'In Safari, tap Share ', share, ' and then ', h('b', { text: 'Add to Home Screen' }), '.' ]],
       firefox: [[ 'Tap the ', h('b', { text: '☰' }), ' menu, then ', h('b', { text: 'Share' }), '.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '.' ]],
       edge: [[ 'Tap the ', h('b', { text: '⋯' }), ' menu, then ', h('b', { text: 'Share' }), '.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '.' ]],
       inapp: [[ 'This page is open inside another app, which cannot add home-screen apps.' ], [ 'Tap ', h('b', { text: 'Copy link' }), ' below, open ', h('b', { text: 'Safari' }), ', paste it in the address bar, then tap Add to Home Screen again.' ]]
@@ -365,7 +363,7 @@
     const body = h('div', { class: 'guide' },
       h('p', { class: 'muted', style: 'margin:0;font-size:.9rem', text: 'iPhone only lets you add apps from the Share menu, so it takes two quick taps:' }),
       h('ol', null, steps.map(s => h('li', null, s))),
-      b === 'inapp' || b === 'brave' ? h('button', { type: 'button', class: 'small', text: 'Copy link', onclick: async () => { try { await navigator.clipboard.writeText(appUrl()); toast('Link copied'); } catch { toast('Copy the address from the address bar'); } } }) : null,
+      b === 'inapp' ? h('button', { type: 'button', class: 'small', text: 'Copy link', onclick: async () => { try { await navigator.clipboard.writeText(appUrl()); toast('Link copied'); } catch { toast('Copy the address from the address bar'); } } }) : null,
       h('p', { class: 'muted', style: 'margin:0;font-size:.82rem', text: 'After that, open Ruxer Farms from its icon. It opens full screen and this bar goes away.' }));
     const sh = sheet('Add to Home Screen', body);
     if (b === 'safari' || b === 'chrome') {
