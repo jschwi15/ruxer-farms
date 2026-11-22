@@ -1,16 +1,16 @@
 /* Ruxer Farms service worker: keeps the app usable with no signal and shows
    due-soon alerts sent by the server. Data requests to Supabase are never
    cached here; the app keeps its own saved copy of the data. */
-const CACHE = 'ruxer-shell-v5';
+const CACHE = 'ruxer-shell-v6';
 const SHELL = [
   './',
   './index.html',
   './app.js',
   './config.js',
   './manifest.webmanifest',
-  './app-icon-180.png',
-  './app-icon-192.png',
-  './app-icon-512.png',
+  './logo-64.png',
+  './logo-180.png',
+  './logo-192.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js'
 ];
 
@@ -55,8 +55,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(Promise.all([
     self.registration.showNotification(title, {
       body: d.body || 'A service is coming due.',
-      icon: 'app-icon-192.png',
-      badge: 'app-icon-192.png',
+      icon: 'logo-192.png',
+      badge: 'logo-64.png',
       tag: d.tag || 'ruxer-due',
       data: { url: d.url || './' }
     }),
