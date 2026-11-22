@@ -501,14 +501,10 @@
   }
 
   function dealerCard(d) {
-    const tel = (n) => n ? h('a', { class: 'btn small', href: 'tel:' + n.replace(/[^\d+]/g, '') , text: '☎ ' + n }) : null;
     return h('div', { class: 'stack', style: 'padding-top:14px;gap:10px' },
-      h('div', null, h('b', { style: 'font-size:1.1rem', text: d.name || 'Dealer' }), d.contact ? h('div', { class: 'muted', text: 'Contact: ' + d.contact }) : null),
-      h('div', { class: 'chips' }, tel(d.phone), d.partsPhone ? h('a', { class: 'btn small', href: 'tel:' + d.partsPhone.replace(/[^\d+]/g, ''), text: '☎ Parts ' + d.partsPhone }) : null,
-        d.email ? h('a', { class: 'btn small', href: 'mailto:' + d.email, text: '✉ ' + d.email }) : null),
+      d.name ? h('b', { style: 'font-size:1.1rem', text: d.name }) : null,
       d.address ? h('a', { class: 'inl', href: 'https://maps.apple.com/?q=' + encodeURIComponent(d.address), target: '_blank', rel: 'noopener', text: d.address }) : null,
-      d.website ? h('a', { class: 'inl', href: /^https?:/.test(d.website) ? d.website : 'https://' + d.website, target: '_blank', rel: 'noopener', text: d.website }) : null,
-      d.notes ? h('div', { class: 'muted', style: 'white-space:pre-wrap', text: d.notes }) : null);
+      d.phone ? h('a', { class: 'btn primary', style: 'justify-self:start', href: 'tel:' + d.phone.replace(/[^\d+]/g, ''), text: '☎ Call ' + d.phone }) : null);
   }
 
   function tabLog(e, eq, u) {
@@ -806,20 +802,15 @@
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
       const g = (k) => form.querySelector('#d-' + k).value.trim();
-      const out = { ...d, name: g('name'), contact: g('contact'), phone: g('phone'), partsPhone: g('partsPhone'), email: g('email'), website: g('website'), address: g('address'), notes: g('notes') };
+      const out = { id: d.id, name: g('name'), address: g('address'), phone: g('phone') };
       if (!out.name) { toast('Give the dealer a name.'); return; }
       try { await action(ex ? 'Dealer saved' : 'Dealer added', () => put('contacts', out)); history.length > 1 && !ex ? history.back() : go('#dealers'); }
       catch (err) { showErr(err); }
     } },
       h('div', { class: 'panel' }, h('div', { class: 'fgrid', style: 'padding-top:0' },
         field('Dealer name *', inp('name', { required: true, placeholder: 'e.g. Green Valley Equipment' }), 'wide'),
-        field('Contact person', inp('contact', { placeholder: 'Service writer or parts person' })),
-        field('Phone', inp('phone', { type: 'tel', inputmode: 'tel' })),
-        field('Parts phone', inp('partsPhone', { type: 'tel', inputmode: 'tel' })),
-        field('Email', inp('email', { type: 'email', inputmode: 'email' })),
-        field('Website', inp('website', { inputmode: 'url', placeholder: 'dealer.com' })),
-        field('Address', inp('address', { placeholder: 'Street, town' }), 'wide'),
-        field('Notes', h('textarea', { id: 'd-notes', value: d.notes || '', placeholder: 'Hours, account number, who to ask for…' }), 'wide'))),
+        field('Address', inp('address', { placeholder: 'Street, town, state' }), 'wide'),
+        field('Phone', inp('phone', { type: 'tel', inputmode: 'tel' }), 'wide'))),
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#dealers', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
     const wrap = h('div', null, h('div', { class: 'top' }, backLink('#dealers', 'Dealers')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit dealer' : 'Add dealer' }), form);
     if (ex) {
