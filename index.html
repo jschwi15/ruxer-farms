@@ -63,7 +63,7 @@ button:disabled { opacity: .5; cursor: default; }
 .small { padding: 7px 12px; min-height: 34px; font-size: .85rem; }
 .link { border: 0; padding: 0; min-height: 0; color: var(--good); font-weight: 600; }
 
-input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; }
+input, select, textarea { font: inherit; font-size: 16px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; }
 textarea { min-height: 80px; resize: vertical; }
 label.f { display: grid; gap: 5px; min-width: 0; }
 label.f > span { text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; color: var(--muted); font-weight: 600; }
@@ -198,6 +198,35 @@ tr:last-child td { border-bottom: 0; }
 .inl { color: var(--good); text-decoration: none; font-weight: 600; }
 .inl:hover { text-decoration: underline; }
 .confirmbox { display: grid; gap: 10px; margin-top: 14px; padding: 12px 14px; background: var(--raised); border-radius: 12px; }
+
+/* v4: photos, scanning, dealer account */
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; padding-top: 14px; }
+.thumb { padding: 0; min-height: 0; border-radius: 10px; overflow: hidden; display: grid; background: var(--raised); text-align: left; }
+.thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.thumb span { font: 500 .75rem/1.2 var(--f-body); padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rthumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.rthumbs .thumb { width: 64px; }
+.inrow { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.inrow input { flex: 1 1 auto; }
+.inrow .scanbtn { padding: 7px 10px; flex: none; }
+.f > .flabel { text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; color: var(--muted); font-weight: 600; }
+div.f { display: grid; gap: 5px; min-width: 0; }
+.acct { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.acct b { font-size: 1.05rem; letter-spacing: .04em; }
+.viewer { position: fixed; inset: 0; z-index: 50; background: rgba(8, 10, 8, .96); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.vbar, .vfoot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.vfoot input { flex: 1 1 200px; width: auto; }
+.vimg { min-height: 0; display: grid; place-items: center; }
+.vimg img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.sheetwrap { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .6); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 18px 18px 0 0; width: 100%; max-width: 560px; max-height: 85vh; overflow: auto;
+  padding: 18px max(18px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); }
+.sheet .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.sheet .hd h2 { font-size: 1.4rem; }
+.cand { justify-content: flex-start; width: 100%; font: 600 1.05rem/1.2 var(--f-mono); letter-spacing: .04em; overflow-wrap: anywhere; text-align: left; }
+.keeprow { display: flex; gap: 10px; align-items: center; font-size: .9rem; }
+.keeprow input { width: 20px; height: 20px; accent-color: var(--green); }
 </style>
 </head>
 <body>
@@ -208,6 +237,6 @@ tr:last-child td { border-bottom: 0; }
 
 <script src="config.js?v=3"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

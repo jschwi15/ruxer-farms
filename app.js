@@ -199,6 +199,7 @@
   async function loadAll() {
     try {
       await Promise.all(TABLES.map(loadTable));
+      await loadPhotos().catch(err => console.error('photos', err));
       for (const op of S.outbox) applyLocal(op); // keep unsynced changes visible
       S.loaded = true; S.offline = S.outbox.length > 0; saveCache();
     } catch (err) {
@@ -355,7 +356,6 @@
       chip(s.level),
       h('div', { class: 'meta' }, e.vin ? h('span', { class: 'mono', text: 'VIN ' + e.vin }) : null),
       h('div', { class: 'meterrow' }, meterUi),
-      s.next ? h('div', { class: 'next' }, h('b', { text: s.next.iv.task || 'Service' }), ' · ', h('span', { class: 'muted', text: s.next.s.text || everyText(s.next.iv, u) })) : h('div', { class: 'next muted', text: 'No service intervals set' }),
       kids.length ? h('div', { class: 'kids' }, kids.map(k => {
         const ks = eqStatus(k);
         return h('a', { class: 'kid', href: '#eq-' + k.id, onclick: stop }, h('span', { text: '↳ ' + (k.name || 'Implement') }), chip(ks.level));
@@ -465,6 +465,7 @@
         h('div', { style: 'grid-column:1/-1' }, h('div', { class: 'eyebrow', text: 'VIN / Serial number' }),
           e.vin ? h('div', { class: 'vin' }, h('span', { class: 'mono', text: e.vin }), copyBtn) : h('div', { class: 'muted', text: 'Not entered yet' })),
         facts.map(([k, v]) => h('div', null, h('div', { class: 'eyebrow', text: k }), h('div', { class: 'v', text: v }))))));
+    frag.append(photosPanel(e));
     const dealer = findDealer(e.dealerId);
     frag.append(h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Dealer' }), h('a', { class: 'btn small', href: '#edit-' + e.id, text: dealer ? 'Change' : '+ Set' })),
       dealer ? dealerCard(dealer) : h('p', { class: 'muted', style: 'margin:14px 0 0', text: 'No dealer set for this machine.' })));
@@ -504,6 +505,8 @@
     return h('div', { class: 'stack', style: 'padding-top:14px;gap:10px' },
       d.name ? h('b', { style: 'font-size:1.1rem', text: d.name }) : null,
       d.address ? h('a', { class: 'inl', href: 'https://maps.apple.com/?q=' + encodeURIComponent(d.address), target: '_blank', rel: 'noopener', text: d.address }) : null,
+      d.account ? h('div', { class: 'acct' }, h('span', { class: 'muted', text: 'Account #' }), h('b', { class: 'mono', text: d.account }),
+        h('button', { class: 'small', type: 'button', text: 'Copy', onclick: async () => { try { await navigator.clipboard.writeText(d.account); toast('Account number copied'); } catch { toast('Account # ' + d.account); } } })) : null,
       d.phone ? h('a', { class: 'btn primary', style: 'justify-self:start', href: 'tel:' + d.phone.replace(/[^\d+]/g, ''), text: '☎ Call ' + d.phone }) : null);
   }
 
@@ -520,7 +523,8 @@
         h('span', { style: 'flex:1' }), removeBtn(l, 'Service entry removed')),
       (l.taskNames || []).length ? h('div', { class: 'chips' }, l.taskNames.map(t => h('span', { class: 'chip', text: t }))) : null,
       l.work ? h('p', { text: l.work }) : null,
-      l.parts ? h('p', { class: 'muted' }, 'Parts: ', l.parts) : null));
+      l.parts ? h('p', { class: 'muted' }, 'Parts: ', l.parts) : null,
+      (() => { const rs = S.photos.filter(ph => ph.log_id === l.id); return rs.length ? h('div', { class: 'rthumbs' }, rs.map(ph => h('button', { type: 'button', class: 'thumb', onclick: () => viewPhoto(ph.id), 'aria-label': 'Open receipt' }, h('img', { src: ph.thumb, alt: '' })))) : null; })()));
     return p;
   }
   function removeBtn(l, label) {
@@ -609,6 +613,210 @@
     return p;
   }
 
+  // ---------- photos & scanning ----------
+  const KINDS = { plate: 'VIN / plate', receipt: 'Receipt', machine: 'Machine', other: 'Other' };
+  S.photos = [];
+  async function loadPhotos() {
+    const { data, error } = await S.sb.from('photos').select('id,equipment_id,kind,caption,log_id,taken,by,thumb,created_at').order('created_at', { ascending: false });
+    if (error) throw error;
+    S.photos = data;
+  }
+  function shrink(file, max, quality) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve({ canvas: c, data: c.toDataURL('image/jpeg', quality) });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a photo this phone can read')); };
+      img.src = url;
+    });
+  }
+  function pickPhotos(multiple, cb) {
+    const inp = h('input', { type: 'file', accept: 'image/*', hidden: true, multiple: multiple || null });
+    inp.addEventListener('change', () => { const files = [...(inp.files || [])]; inp.remove(); if (files.length) cb(files); });
+    document.body.append(inp);
+    inp.click();
+  }
+  async function savePhotos(eqId, files, kind, logId) {
+    if (navigator.onLine === false) { toast('Photos need a connection. Try again when you have signal.'); return 0; }
+    let n = 0;
+    for (const f of files) {
+      const big = await shrink(f, 1600, 0.72), small = await shrink(f, 320, 0.6);
+      const row = { id: uid('p'), equipment_id: eqId, kind, caption: '', log_id: logId || null, taken: todayStr(), by: S.myName, thumb: small.data, image: big.data };
+      const { error } = await S.sb.from('photos').insert(row);
+      if (error) throw error;
+      const meta = { ...row }; delete meta.image;
+      S.photos.unshift(meta); n++;
+    }
+    announce('photos');
+    return n;
+  }
+  function addPhotosFlow(eqId, kind, logId) {
+    pickPhotos(true, async (files) => {
+      toast(`Saving ${files.length} photo${files.length === 1 ? '' : 's'}…`);
+      try { const n = await savePhotos(eqId, files, kind, logId); if (n) toast(`${n} photo${n === 1 ? '' : 's'} saved`); render(true); }
+      catch (err) { showErr(err); }
+    });
+  }
+  function photosPanel(e) {
+    const ps = S.photos.filter(p => p.equipment_id === e.id);
+    const btn = (kind, label) => h('button', { class: 'small', type: 'button', text: '📷 ' + label, onclick: () => addPhotosFlow(e.id, kind) });
+    const p = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Photos' }), h('span', { class: 'muted', text: ps.length ? String(ps.length) : '' })),
+      h('div', { class: 'chips', style: 'padding-top:14px' }, btn('plate', 'VIN / plate'), btn('receipt', 'Receipt'), btn('machine', 'Machine'), btn('other', 'Other')));
+    if (!ps.length) p.append(h('p', { class: 'muted', style: 'margin:12px 0 0', text: 'Take pictures of the serial plate, receipts, filter locations or damage. Everyone with the app sees them.' }));
+    else p.append(h('div', { class: 'thumbs' }, ps.map(ph => h('button', { type: 'button', class: 'thumb', onclick: () => viewPhoto(ph.id), 'aria-label': `Open ${KINDS[ph.kind] || 'photo'}` },
+      h('img', { src: ph.thumb, alt: '' }), h('span', { text: ph.caption || KINDS[ph.kind] || 'Photo' })))));
+    return p;
+  }
+  async function shareBlob(name, blob) {
+    try {
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    } catch (err) { if (err && err.name === 'AbortError') return; }
+    const a = h('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  async function viewPhoto(id) {
+    const meta = S.photos.find(p => p.id === id);
+    if (!meta) return;
+    let full = null;
+    const imgEl = h('img', { src: meta.thumb, alt: meta.caption || KINDS[meta.kind] || 'Photo' });
+    const cap = h('input', { id: 'ph-cap', value: meta.caption || '', placeholder: 'Caption, e.g. Hutson invoice 1234' });
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    const del = h('span');
+    const delIdle = () => del.replaceChildren(h('button', { class: 'small danger', type: 'button', text: 'Delete', onclick: () => del.replaceChildren(
+      h('button', { class: 'small danger solid', type: 'button', text: 'Delete photo', onclick: async () => {
+        const { error } = await S.sb.from('photos').delete().eq('id', id);
+        if (error) { showErr(error); return; }
+        S.photos = S.photos.filter(p => p.id !== id); announce('photos'); close(); toast('Photo deleted'); render(true);
+      } }),
+      h('button', { class: 'small', type: 'button', text: 'Cancel', onclick: delIdle })) }));
+    delIdle();
+    const ov = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Photo' },
+      h('div', { class: 'vbar' }, h('span', { class: 'muted', text: [KINDS[meta.kind] || 'Photo', meta.taken ? fmtDate(meta.taken) : '', meta.by].filter(Boolean).join(' · ') }), h('span', { style: 'flex:1' }),
+        h('button', { class: 'small', type: 'button', text: 'Close', onclick: close })),
+      h('div', { class: 'vimg' }, imgEl),
+      h('form', { class: 'vfoot', onsubmit: async (ev) => {
+        ev.preventDefault();
+        const c = cap.value.trim();
+        const { error } = await S.sb.from('photos').update({ caption: c }).eq('id', id);
+        if (error) { showErr(error); return; }
+        meta.caption = c; announce('photos'); toast('Caption saved'); cap.blur(); render(true);
+      } }, cap, h('button', { class: 'small', type: 'submit', text: 'Save' })),
+      h('div', { class: 'vfoot' }, h('button', { class: 'small', type: 'button', text: 'Share or save', onclick: async () => {
+        if (!full) { toast('The full photo is still loading.'); return; }
+        const blob = await (await fetch(full)).blob();
+        shareBlob(`ruxer-${meta.kind}-${meta.taken || 'photo'}.jpg`, blob);
+      } }), h('span', { style: 'flex:1' }), del));
+    document.body.append(ov);
+    document.addEventListener('keydown', onKey);
+    try {
+      const { data, error } = await S.sb.from('photos').select('image').eq('id', id).single();
+      if (error) throw error;
+      full = data.image; imgEl.src = full;
+    } catch (err) { console.error(err); toast('Showing a small copy. The full photo needs a connection.'); }
+  }
+
+  const LIB = { tess: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', zx: 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js' };
+  const loadedLibs = {};
+  function loadScript(src) {
+    if (!loadedLibs[src]) loadedLibs[src] = new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = src; s.onload = res;
+      s.onerror = () => { delete loadedLibs[src]; s.remove(); rej(new Error('Could not load the scanner. Check your connection')); };
+      document.head.append(s);
+    });
+    return loadedLibs[src];
+  }
+  let ocrWorker = null;
+  async function readText(canvas) {
+    await loadScript(LIB.tess);
+    if (!ocrWorker) ocrWorker = await window.Tesseract.createWorker('eng', 1, {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+      langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int'
+    });
+    const { data } = await ocrWorker.recognize(canvas);
+    return (data && data.text) || '';
+  }
+  async function readBarcode(canvas) {
+    try {
+      await loadScript(LIB.zx);
+      const hints = new Map(); hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
+      const res = await new window.ZXing.BrowserMultiFormatReader(hints).decodeFromImageUrl(canvas.toDataURL('image/png'));
+      return res ? res.getText() : null;
+    } catch { return null; }
+  }
+  function vinCands(text) {
+    const out = new Map();
+    const add = (s, score) => {
+      const v = s.replace(/[OQ]/g, '0').replace(/I/g, '1');
+      if (v.length >= 8 && v.length <= 17 && /\d/.test(v) && /[A-Z]/.test(v)) out.set(v, Math.max(out.get(v) || 0, score + (v.length === 17 ? 10 : 0)));
+    };
+    for (const line of text.toUpperCase().split('\n')) {
+      (line.replace(/[^A-Z0-9]/g, '').match(/[A-Z0-9]{17}/g) || []).forEach(m => add(m, 5));
+      line.split(/[^A-Z0-9]+/).forEach(t => add(t, 1));
+    }
+    return [...out.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, 6);
+  }
+  function partCands(text) {
+    const out = new Map();
+    for (const tok of text.toUpperCase().split(/[^A-Z0-9-]+/)) {
+      const t = tok.replace(/^-+|-+$/g, '');
+      const digits = (t.match(/\d/g) || []).length;
+      if (t.length < 4 || t.length > 16 || digits < 3) continue;
+      out.set(t, Math.max(out.get(t) || 0, (/[A-Z]/.test(t) ? 3 : 1) + (t.length >= 6 && t.length <= 10 ? 1 : 0)));
+    }
+    return [...out.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, 8);
+  }
+  function sheet(title, body) {
+    let ov;
+    const close = () => ov && ov.remove();
+    ov = h('div', { class: 'sheetwrap', onclick: (ev) => { if (ev.target === ov) close(); } },
+      h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+        h('div', { class: 'hd' }, h('h2', { text: title }), h('button', { class: 'small', type: 'button', text: 'Close', onclick: close })), body));
+    document.body.append(ov);
+    return { close };
+  }
+  // Read a VIN or part number from a photo and put the chosen one into `target`.
+  function scanInto(target, mode, eqId) {
+    pickPhotos(false, async ([file]) => {
+      const body = h('div', { class: 'stack', style: 'padding-top:14px' },
+        h('p', { style: 'margin:0', text: 'Reading the photo…' }),
+        h('p', { class: 'muted', style: 'margin:0;font-size:.85rem', text: 'The first scan downloads the reader (about 7 MB) and can take 20–40 seconds. Later scans are faster.' }));
+      const sh = sheet(mode === 'vin' ? 'Read VIN from photo' : 'Scan part number', body);
+      try {
+        const { canvas } = await shrink(file, 1800, 0.9);
+        const [code, text] = await Promise.all([mode === 'part' ? readBarcode(canvas) : Promise.resolve(null), readText(canvas)]);
+        const cands = mode === 'vin' ? vinCands(text) : partCands(text).filter(c => c !== code);
+        const keep = eqId ? h('input', { type: 'checkbox', id: 'scan-keep', checked: true }) : null;
+        const pick = async (v) => {
+          target.value = v; target.dispatchEvent(new Event('input', { bubbles: true }));
+          sh.close(); toast('Filled in. Check it against the ' + (mode === 'vin' ? 'plate.' : 'box.'));
+          if (keep && keep.checked) { try { await savePhotos(eqId, [file], mode === 'vin' ? 'plate' : 'other'); } catch (err) { showErr(err); } }
+        };
+        const cand = (v) => h('button', { class: 'cand', type: 'button', text: v, onclick: () => pick(v) });
+        body.replaceChildren();
+        if (code) body.append(h('div', { class: 'eyebrow', text: 'Barcode' }), cand(code),
+          /^\d{11,14}$/.test(code) ? h('p', { class: 'muted', style: 'margin:0;font-size:.82rem', text: 'This looks like a store UPC code, which is usually not the part number. Use a number below if one matches the box.' }) : null);
+        if (cands.length) body.append(h('div', { class: 'eyebrow', text: 'Text found in the photo' }), ...cands.map(cand));
+        if (!code && !cands.length) body.append(h('p', { style: 'margin:0', text: `No ${mode === 'vin' ? 'VIN' : 'part number'} could be read. Try again closer, with the ${mode === 'vin' ? 'plate' : 'label'} filling the photo and no glare.` }));
+        else body.append(h('p', { class: 'muted', style: 'margin:0;font-size:.82rem', text: 'Tap the one that matches. You can still edit it after.' }));
+        if (keep && (code || cands.length)) body.append(h('label', { class: 'keeprow' }, keep, mode === 'vin' ? 'Also save this photo to the machine' : 'Also save this photo to the machine'));
+      } catch (err) {
+        console.error(err);
+        body.replaceChildren(h('p', { style: 'margin:0', text: (err && err.message ? err.message : 'The photo could not be read') + '.' }));
+      }
+    });
+  }
+
   // ---------- service ----------
   async function recordService(eqId, { date, meter, done, work, parts, cost }) {
     const e = findEq(eqId);
@@ -623,12 +831,15 @@
     });
     if (meter != null && e.meterUnit !== 'parent' && (numOrNull(next.meter) == null || meter >= Number(next.meter))) { next.meter = meter; next.meterDate = date; }
     await put('equipment', next);
+    return log.id;
   }
   function logForm(id) {
     const e = findEq(id);
     if (!e) return detail(id);
     const eq = effEq(e), u = unitLabel(eq.meterUnit);
     const ivs = (e.intervals || []).map(iv => ({ iv, s: intervalStatus(eq, iv) }));
+    let receipts = [];
+    const receiptNote = h('span', { class: 'muted', style: 'font-size:.85rem' });
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
       const el = form.elements;
@@ -637,7 +848,9 @@
       if (!done.length && !work) { toast('Tick a service or describe the work done.'); return; }
       const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        await action('Service logged', () => recordService(e.id, { date: el.date.value || todayStr(), meter: numOrNull(el.meter.value), done, work, parts: el.parts.value.trim(), cost: numOrNull(el.cost.value) }));
+        let logId = null;
+        await action('Service logged', async () => { logId = await recordService(e.id, { date: el.date.value || todayStr(), meter: numOrNull(el.meter.value), done, work, parts: el.parts.value.trim(), cost: numOrNull(el.cost.value) }); });
+        if (receipts.length) { btn.textContent = 'Saving receipt…'; try { await savePhotos(e.id, receipts, 'receipt', logId); } catch (err) { showErr(err); } }
         go('#eq-' + e.id);
       } catch (err) { showErr(err); btn.disabled = false; btn.textContent = 'Save service'; }
     } },
@@ -653,7 +866,8 @@
         field('Work done', h('textarea', { id: 'l-work', name: 'work', placeholder: 'Changed oil and filter, greased loader pins…' })),
         h('div', { class: 'fgrid', style: 'padding-top:0' },
           field('Parts used', h('input', { id: 'l-parts', name: 'parts', placeholder: 'Filter part numbers, oil qty' })),
-          field('Cost ($, optional)', h('input', { id: 'l-cost', name: 'cost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' })))),
+          field('Cost ($, optional)', h('input', { id: 'l-cost', name: 'cost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' }))),
+        h('div', { class: 'chips' }, h('button', { type: 'button', class: 'small', text: '🧾 Attach receipt', onclick: () => pickPhotos(true, (files) => { receipts = receipts.concat(files); receiptNote.textContent = `${receipts.length} receipt photo${receipts.length === 1 ? '' : 's'} attached`; }) }), receiptNote)),
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#eq-' + e.id, text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save service' })));
     return h('div', null,
       h('div', { class: 'top' }, backLink('#eq-' + e.id, e.name || 'Machine')),
@@ -675,12 +889,14 @@
     const fRow = (f = {}) => {
       const row = h('div', { class: 'reprow', 'data-kind': 'filter' },
         h('label', { class: 'f w2' }, h('span', { text: 'Item' }), h('input', { 'data-f': 'name', value: f.name || '', placeholder: 'Engine oil filter' })),
-        h('label', { class: 'f' }, h('span', { text: 'Part number' }), h('input', { 'data-f': 'number', class: 'mono', value: f.number || '', placeholder: 'OEM number' })),
+        (() => { const num = h('input', { 'data-f': 'number', class: 'mono', value: f.number || '', placeholder: 'OEM number' });
+          return h('div', { class: 'f' }, h('span', { class: 'flabel', text: 'Part number' }), h('div', { class: 'inrow' }, num, h('button', { type: 'button', class: 'small scanbtn', text: '📷', 'aria-label': 'Scan part number from a photo', onclick: () => scanInto(num, 'part', existing ? e.id : null) }))); })(),
         h('label', { class: 'f' }, h('span', { text: 'Cross-reference' }), h('input', { 'data-f': 'alt', class: 'mono', value: f.alt || '', placeholder: 'Wix, Baldwin…' })),
         h('label', { class: 'f' }, h('span', { text: 'Qty' }), h('input', { 'data-f': 'qty', value: f.qty || '', placeholder: '1' })),
         h('label', { class: 'f w2' }, h('span', { text: 'Notes' }), h('input', { 'data-f': 'notes', value: f.notes || '', placeholder: 'Capacity, fluid spec…' })),
         h('button', { class: 'small danger rm', type: 'button', text: 'Remove', onclick: () => row.remove() }));
       filtersBox.append(row);
+      return row;
     };
     (e.filters || []).forEach(fRow);
     if (!(e.filters || []).length) fRow();
@@ -759,7 +975,8 @@
           field('Make', inp('make', { placeholder: 'John Deere' })),
           field('Model', inp('model', { placeholder: '4066M' })),
           field('Year', inp('year', { inputmode: 'numeric', placeholder: '2021' })),
-          field('VIN / Serial number', inp('vin', { class: 'mono', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'VIN or PIN / serial' }), 'wide'),
+          (() => { const vin = inp('vin', { class: 'mono', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'VIN or PIN / serial' });
+            return field('VIN / Serial number', h('div', { class: 'inrow' }, vin, h('button', { type: 'button', class: 'small', text: '📷 Scan', onclick: () => scanInto(vin, 'vin', existing ? e.id : null) })), 'wide'); })(),
           field('Attached to', parentSel),
           field('Meter type', unitSel),
           meterField,
@@ -770,7 +987,7 @@
       h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Service intervals' }), h('button', { type: 'button', class: 'small', text: '+ Add', onclick: () => ivRow() })),
         h('p', { class: 'muted', style: 'margin:14px 0 0;font-size:.88rem', text: 'Set hours, months, or both; whichever comes first counts. Leave the interval blank until you know it.' }),
         quick, ivBox),
-      h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Filters & parts' }), h('button', { type: 'button', class: 'small', text: '+ Add part', onclick: () => fRow() })), filtersBox),
+      h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Filters & parts' }), h('div', { class: 'chips' }, h('button', { type: 'button', class: 'small', text: '📷 Scan a part', onclick: () => { const r = fRow(); scanInto(r.querySelector('[data-f=number]'), 'part', existing ? e.id : null); } }), h('button', { type: 'button', class: 'small', text: '+ Add part', onclick: () => fRow() }))), filtersBox),
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: existing ? '#eq-' + e.id : (parentPre ? '#eq-' + parentPre.id : '#'), text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
     syncMeter();
     return h('div', null,
@@ -802,7 +1019,7 @@
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
       const g = (k) => form.querySelector('#d-' + k).value.trim();
-      const out = { id: d.id, name: g('name'), address: g('address'), phone: g('phone') };
+      const out = { id: d.id, name: g('name'), address: g('address'), phone: g('phone'), account: g('account') };
       if (!out.name) { toast('Give the dealer a name.'); return; }
       try { await action(ex ? 'Dealer saved' : 'Dealer added', () => put('contacts', out)); history.length > 1 && !ex ? history.back() : go('#dealers'); }
       catch (err) { showErr(err); }
@@ -810,7 +1027,8 @@
       h('div', { class: 'panel' }, h('div', { class: 'fgrid', style: 'padding-top:0' },
         field('Dealer name *', inp('name', { required: true, placeholder: 'e.g. Green Valley Equipment' }), 'wide'),
         field('Address', inp('address', { placeholder: 'Street, town, state' }), 'wide'),
-        field('Phone', inp('phone', { type: 'tel', inputmode: 'tel' }), 'wide'))),
+        field('Phone', inp('phone', { type: 'tel', inputmode: 'tel' }), 'wide'),
+        field('Account number', inp('account', { class: 'mono', autocomplete: 'off', placeholder: 'Your account # with this dealer' }), 'wide'))),
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#dealers', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
     const wrap = h('div', null, h('div', { class: 'top' }, backLink('#dealers', 'Dealers')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit dealer' : 'Add dealer' }), form);
     if (ex) {
@@ -970,7 +1188,7 @@
     const fileIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: () => restorePick(fileIn, restoreBox) });
     const restoreBox = h('div');
     st.append(h('div', { class: 'panel' }, h('h2', { text: 'Backup & export' }),
-      h('p', { class: 'muted', style: 'margin:14px 0 0;font-size:.9rem', text: 'Save a full backup to Files or send it by email. Spreadsheets open in Excel, Numbers or Google Sheets.' }),
+      h('p', { class: 'muted', style: 'margin:14px 0 0;font-size:.9rem', text: 'Save a full backup to Files or send it by email. Photos are not in the backup file; they stay in the app. Spreadsheets open in Excel, Numbers or Google Sheets.' }),
       h('div', { class: 'chips', style: 'padding-top:12px' },
         h('button', { class: 'primary', type: 'button', text: 'Full backup', onclick: () => exportBackup() }),
         h('button', { type: 'button', text: 'Service log (spreadsheet)', onclick: () => exportServiceCsv() }),
@@ -1075,6 +1293,7 @@
     channel = S.sb.channel('ruxer-changes', { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'changed' }, ({ payload }) => {
         clearTimeout(t);
+        if (payload && payload.table === 'photos') { loadPhotos().then(() => render()).catch(() => {}); return; }
         const tb = payload && TABLES.includes(payload.table) ? payload.table : null;
         t = setTimeout(() => (tb ? loadTable(tb) : Promise.all(TABLES.map(loadTable))).then(() => { saveCache(); render(); updateBadge(); }).catch(() => {}), 200);
       })
