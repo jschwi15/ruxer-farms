@@ -8,7 +8,7 @@
   const CFG = window.RUXER_CONFIG || {};
   const KEY = new URLSearchParams(location.search).get('k') || '';
   const S = {
-    sb: null, myName: '', equipment: [], logs: [], contacts: [],
+    sb: null, myName: '', equipment: [], logs: [], contacts: [], tanks: [],
     loaded: false, offline: false, outbox: [], view: { name: 'list' }, tab: 'status',
     meterOpen: false, quickMeter: null, confirmIv: null, formShown: false, pendingRender: false, search: ''
   };
@@ -126,9 +126,9 @@
   const alertHours = () => numOrNull(ls.get('ruxer-alert-hours')) ?? 30;
 
   // ---------- data: Supabase + offline outbox + undo ----------
-  const TABLES = ['equipment', 'logs', 'contacts'];
-  const listOf = (t) => t === 'equipment' ? S.equipment : t === 'logs' ? S.logs : S.contacts;
-  function setList(t, arr) { if (t === 'equipment') S.equipment = arr; else if (t === 'logs') S.logs = arr; else S.contacts = arr; }
+  const TABLES = ['equipment', 'logs', 'contacts', 'tanks'];
+  const listOf = (t) => t === 'equipment' ? S.equipment : t === 'logs' ? S.logs : t === 'tanks' ? S.tanks : S.contacts;
+  function setList(t, arr) { if (t === 'equipment') S.equipment = arr; else if (t === 'logs') S.logs = arr; else if (t === 'tanks') S.tanks = arr; else S.contacts = arr; }
   function toRow(t, obj) {
     const data = clone(obj); delete data.id;
     return t === 'logs' ? { id: obj.id, equipment_id: obj.equipmentId || '', data } : { id: obj.id, data };
@@ -139,9 +139,9 @@
     if (op.op === 'put') arr.push(fromRow(op.table, op.row));
     setList(op.table, arr);
   }
-  function saveCache() { ls.set('ruxer-cache', JSON.stringify({ equipment: S.equipment, logs: S.logs, contacts: S.contacts, at: Date.now() })); }
+  function saveCache() { ls.set('ruxer-cache', JSON.stringify({ equipment: S.equipment, logs: S.logs, contacts: S.contacts, tanks: S.tanks, at: Date.now() })); }
   function loadCache() {
-    try { const c = JSON.parse(ls.get('ruxer-cache') || 'null'); if (c) { S.equipment = c.equipment || []; S.logs = c.logs || []; S.contacts = c.contacts || []; S.cacheAt = c.at; return true; } } catch { }
+    try { const c = JSON.parse(ls.get('ruxer-cache') || 'null'); if (c) { S.equipment = c.equipment || []; S.logs = c.logs || []; S.contacts = c.contacts || []; S.tanks = c.tanks || []; S.cacheAt = c.at; return true; } } catch { }
     return false;
   }
   const saveOutbox = () => ls.set('ruxer-outbox', JSON.stringify(S.outbox));
@@ -223,6 +223,9 @@
     if ((m = s.match(/^hist-([A-Za-z0-9]+)$/))) return { name: 'history', id: m[1] };
     if (s === 'history') return { name: 'history', id: null };
     if (s === 'settings') return { name: 'settings' };
+    if (s === 'tank-new') return { name: 'tankedit', id: null };
+    if ((m = s.match(/^tankedit-([A-Za-z0-9]+)$/))) return { name: 'tankedit', id: m[1] };
+    if ((m = s.match(/^tank-([A-Za-z0-9]+)$/))) return { name: 'tank', id: m[1] };
     if (s === 'dealers') return { name: 'dealers' };
     if (s === 'dealer-new') return { name: 'dealer', id: null };
     if ((m = s.match(/^dealer-([A-Za-z0-9]+)$/))) return { name: 'dealer', id: m[1] };
@@ -235,7 +238,7 @@
     render(true); window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
-  const FORM_VIEWS = ['edit', 'log', 'dealer', 'settings'];
+  const FORM_VIEWS = ['edit', 'log', 'dealer', 'settings', 'tankedit'];
   function render(force) {
     const v = S.view;
     if (!force) {
@@ -256,6 +259,8 @@
     else if (v.name === 'settings') { node = settingsView(); S.formShown = true; }
     else if (v.name === 'dealers') node = dealersView();
     else if (v.name === 'dealer') { node = dealerForm(v.id); S.formShown = true; }
+    else if (v.name === 'tank') node = tankView(v.id);
+    else if (v.name === 'tankedit') { node = tankForm(v.id); S.formShown = true; }
     else node = list();
     const banner = S.offline ? h('div', { class: 'banner' },
       'No connection. Showing what is saved on this phone.',
@@ -271,6 +276,7 @@
       if (!('setAppBadge' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
       let n = 0;
       for (const e of S.equipment) { const c = eqStatus(e).counts; n += c.due + c.soon; }
+      for (const t of S.tanks) if (tankState(t).low) n++;
       if (n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {});
     } catch { }
   }
@@ -313,6 +319,7 @@
       h('div', null, h('b', { class: 'num', style: 'color:var(--bad)', text: count('due') }), h('span', { text: 'Overdue' })),
       h('div', null, h('b', { class: 'num', style: 'color:var(--warn)', text: count('soon') }), h('span', { text: 'Due soon' })),
       h('div', null, h('b', { class: 'num', style: 'color:var(--good)', text: count('ok') }), h('span', { text: 'Good' }))));
+    if (S.tanks.length) frag.append(h('div', { class: 'tanks' }, S.tanks.map(tankCard)));
     const cards = h('div', { class: 'cards' });
     const draw = () => {
       const q = S.search.trim().toLowerCase();
@@ -553,14 +560,14 @@
     frag.append(h('div', { class: 'tally', style: 'margin:0' },
       h('div', null, h('b', { class: 'num', text: fmtN(gal) }), h('span', { text: `Gallons in ${year}` })),
       h('div', null, h('b', { class: 'num', text: rate != null ? rate.toFixed(2) : '—' }), h('span', { text: `Gal per ${u === 'hrs' ? 'hour' : u}` })),
-      h('div', null, h('b', { class: 'num', text: cost ? '$' + Math.round(cost).toLocaleString() : '—' }), h('span', { text: `Fuel cost ${year}` }))));
+      h('div', null, h('b', { class: 'num', text: yr.length }), h('span', { text: `Fill-ups in ${year}` }))));
     const form = h('form', { class: 'panel', onsubmit: async (ev) => {
       ev.preventDefault();
       const el = form.elements;
       const gallons = numOrNull(el.gallons.value);
       if (gallons == null || gallons <= 0) { toast('Enter how many gallons went in.'); el.gallons.focus(); return; }
       const meter = numOrNull(el.fmeter.value);
-      const entry = { id: uid('f'), kind: 'fuel', equipmentId: e.id, date: el.fdate.value || todayStr(), meter, gallons, cost: numOrNull(el.fcost.value), notes: el.fnotes.value.trim(), by: S.myName, createdAt: Date.now() };
+      const entry = { id: uid('f'), kind: 'fuel', equipmentId: e.id, tankId: el.fsrc ? (el.fsrc.value || null) : null, date: el.fdate.value || todayStr(), meter, gallons, notes: el.fnotes.value.trim(), by: S.myName, createdAt: Date.now() };
       document.activeElement && document.activeElement.blur();
       try {
         await action(`${fmtN(gallons)} gal logged`, async () => {
@@ -573,11 +580,14 @@
     } },
       h('h2', { text: 'Add fill-up' }),
       h('div', { class: 'fgrid' },
+        S.tanks.length ? (() => { const sel = h('select', { id: 'fsrc', name: 'fsrc' }, S.tanks.map(t => h('option', { value: t.id, text: t.name || 'Fuel tank' })), h('option', { value: '', text: 'Somewhere else (station, can)' }));
+          const last = ls.get('ruxer-fsrc-' + e.id); sel.value = last != null && (last === '' || findTank(last)) ? last : S.tanks[0].id;
+          sel.addEventListener('change', () => ls.set('ruxer-fsrc-' + e.id, sel.value));
+          return field('Filled from', sel, 'wide'); })() : null,
         field('Date', h('input', { id: 'fdate', name: 'fdate', type: 'date', value: todayStr() })),
         field('Gallons', h('input', { id: 'gallons', name: 'gallons', type: 'number', inputmode: 'decimal', step: 'any', min: '0', required: true })),
         field(`${meterName(eq.meterUnit)} (${u})`, h('input', { id: 'fmeter', name: 'fmeter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: eq.meter ?? '' })),
-        field('Total cost ($, optional)', h('input', { id: 'fcost', name: 'fcost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' })),
-        field('Notes', h('input', { id: 'fnotes', name: 'fnotes', placeholder: 'Diesel, DEF, where filled…' }), 'wide')),
+        field('Notes', h('input', { id: 'fnotes', name: 'fnotes', placeholder: 'Diesel, DEF, anything worth noting' }), 'wide')),
       h('div', { class: 'formfoot', style: 'padding-top:14px' }, h('button', { class: 'primary', type: 'submit', text: 'Save fill-up' })));
     frag.append(form);
     const lp = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Fuel log' }), h('span', { class: 'muted', text: fills.length + (fills.length === 1 ? ' fill-up' : ' fill-ups') })));
@@ -588,6 +598,7 @@
         h('b', { class: 'num', text: `${fmtN(f.gallons)} gal` }),
         numOrNull(f.meter) != null ? h('span', { class: 'num muted', text: `${fmtN(f.meter)} ${u}` }) : null,
         numOrNull(f.cost) != null ? h('span', { class: 'num muted', text: money(f.cost) }) : null,
+        f.tankId ? h('span', { class: 'muted', text: 'from ' + ((findTank(f.tankId) || {}).name || 'tank') }) : null,
         f.by ? h('span', { class: 'muted', style: 'font-size:.85rem', text: 'by ' + f.by }) : null,
         h('span', { style: 'flex:1' }), removeBtn(f, 'Fill-up removed')),
       f.notes ? h('p', { class: 'muted', text: f.notes }) : null));
@@ -611,6 +622,157 @@
           h('td', { class: 'num', text: next || '—' }));
       })))));
     return p;
+  }
+
+  // ---------- fuel tanks ----------
+  // Level = last gauge reading ('tanklevel'), plus deliveries, minus machine fills drawn from the tank.
+  const findTank = (id) => S.tanks.find(t => t.id === id);
+  function tankEvents(t) {
+    return S.logs.filter(l => (l.equipmentId === t.id && (l.kind === 'delivery' || l.kind === 'tanklevel')) || (l.kind === 'fuel' && l.tankId === t.id))
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+  function tankLevel(t) {
+    let level = null;
+    for (const e of tankEvents(t)) {
+      const g = numOrNull(e.kind === 'tanklevel' ? e.level : e.gallons) || 0;
+      if (e.kind === 'tanklevel') level = g; else if (e.kind === 'delivery') level = (level ?? 0) + g; else level = (level ?? 0) - g;
+    }
+    return level;
+  }
+  function tankState(t) {
+    const level = tankLevel(t), cap = numOrNull(t.capacity), alertAt = numOrNull(t.alertAt);
+    const pct = level != null && cap ? Math.max(0, Math.min(1, level / cap)) : null;
+    const low = level != null && alertAt != null && level <= alertAt;
+    const level2 = low ? 'due' : (pct != null && alertAt != null && cap && level <= alertAt + cap * 0.1) ? 'soon' : level == null ? 'unknown' : 'ok';
+    return { level, cap, alertAt, pct, low, status: level2 };
+  }
+  function tankBar(t, st, big) {
+    const fill = st.pct != null ? Math.round(st.pct * 100) : 0;
+    const mark = st.cap && st.alertAt != null ? Math.max(0, Math.min(100, (st.alertAt / st.cap) * 100)) : null;
+    return h('div', { class: 'tankbar' + (big ? ' big' : ''), role: 'img', 'aria-label': st.level == null ? 'Tank level unknown' : `${fmtN(Math.max(0, st.level))} gallons${st.cap ? ' of ' + fmtN(st.cap) : ''}` },
+      h('i', { class: 's-' + st.status, style: `width:${fill}%` }),
+      mark != null ? h('b', { class: 'mark', style: `left:${mark}%`, title: 'Reorder point' }) : null);
+  }
+  function tankSummary(st) {
+    if (st.level == null) return 'Level not set yet';
+    const lv = `${fmtN(Math.max(0, st.level))} gal`;
+    return st.cap ? `${lv} of ${fmtN(st.cap)} gal · ${Math.round(st.pct * 100)}%` : `${lv} · set the capacity to see the bar`;
+  }
+  function tankCard(t) {
+    const st = tankState(t);
+    return h('a', { class: 'tankcard', href: '#tank-' + t.id },
+      h('div', { class: 'tc-top' }, h('div', { style: 'min-width:0' }, h('div', { class: 'eyebrow', text: t.fuelType || 'Fuel' }), h('h3', { text: t.name || 'Fuel tank' })),
+        st.low ? h('span', { class: 'chipst s-due', text: 'Reorder' }) : st.status === 'soon' ? h('span', { class: 'chipst s-soon', text: 'Getting low' }) : st.level == null ? h('span', { class: 'chipst', text: 'Set level' }) : h('span', { class: 'chipst s-ok', text: 'OK' })),
+      tankBar(t, st),
+      h('div', { class: 'muted num', style: 'font-size:.9rem', text: tankSummary(st) }));
+  }
+  function tankView(id) {
+    const t = findTank(id);
+    if (!t) return h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment')), msg('Tank not found', 'It may have been deleted.'));
+    const st = tankState(t);
+    const wrap = h('div', { class: 'stack' });
+    wrap.append(h('div', { class: 'top', style: 'margin-bottom:0' }, backLink('#', 'All equipment'), h('span', { class: 'spacer' }), h('a', { class: 'btn small', href: '#tankedit-' + t.id, text: 'Edit' })));
+    wrap.append(h('div', { class: 'panel stack' },
+      h('div', null, h('div', { class: 'eyebrow', text: t.fuelType || 'Fuel' }), h('h1', { style: 'font-size:2rem', text: t.name || 'Fuel tank' })),
+      h('div', { class: 'tankbig num' }, st.level == null ? '—' : fmtN(Math.max(0, st.level)), h('span', { text: st.level == null ? '' : ' gal' + (st.cap ? ` of ${fmtN(st.cap)}` : '') })),
+      tankBar(t, st, true),
+      h('div', { class: 'muted', style: 'font-size:.9rem' },
+        st.cap ? `${Math.round((st.pct || 0) * 100)}% full` : 'Capacity not set. ', !st.cap ? h('a', { class: 'inl', href: '#tankedit-' + t.id, text: 'Set capacity' }) : null,
+        st.alertAt != null ? ` · Reorder at ${fmtN(st.alertAt)} gal` : (st.cap ? ' · ' : ''), st.alertAt == null ? h('a', { class: 'inl', href: '#tankedit-' + t.id, text: 'Set reorder alert' }) : null),
+      st.low ? h('div', { class: 'banner', style: 'margin:0;color:var(--bad)', text: `Time to reorder: ${fmtN(Math.max(0, st.level))} gal left, at or below the ${fmtN(st.alertAt)} gal reorder point.` }) : null,
+      st.level != null && st.level < 0 ? h('p', { class: 'muted', style: 'margin:0;font-size:.85rem', text: 'More fuel has been drawn than recorded. Use Set level to enter what the gauge reads.' }) : null));
+
+    // delivery + set level forms
+    let receipts = [];
+    const rNote = h('span', { class: 'muted', style: 'font-size:.85rem' });
+    const dForm = h('form', { class: 'panel', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const g = numOrNull(dForm.querySelector('#dgal').value);
+      if (!g || g <= 0) { toast('Enter how many gallons were delivered.'); return; }
+      const entry = { id: uid('t'), kind: 'delivery', equipmentId: t.id, date: dForm.querySelector('#ddate').value || todayStr(), gallons: g,
+        cost: numOrNull(dForm.querySelector('#dcost').value), supplier: dForm.querySelector('#dsup').value.trim(), by: S.myName, createdAt: Date.now() };
+      const btn = dForm.querySelector('button[type=submit]'); btn.disabled = true;
+      try {
+        await action(`${fmtN(g)} gal delivery added`, () => put('logs', entry));
+        if (receipts.length) { btn.textContent = 'Saving receipt…'; try { await savePhotos(t.id, receipts, 'receipt', entry.id); } catch (err) { showErr(err); } }
+        S.formShown = false; render(true);
+      } catch (err) { showErr(err); btn.disabled = false; }
+    } },
+      h('h2', { text: 'Add delivery' }),
+      h('div', { class: 'fgrid' },
+        field('Date', h('input', { id: 'ddate', type: 'date', value: todayStr() })),
+        field('Gallons delivered', h('input', { id: 'dgal', type: 'number', inputmode: 'decimal', step: 'any', min: '0', required: true })),
+        field('Total cost ($, optional)', h('input', { id: 'dcost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' })),
+        field('Supplier', h('input', { id: 'dsup', placeholder: 'Fuel company' }))),
+      h('div', { class: 'chips', style: 'padding-top:12px' },
+        h('button', { type: 'button', class: 'small', text: '🧾 Attach receipt', onclick: () => pickPhotos(true, (files) => { receipts = receipts.concat(files); rNote.textContent = `${receipts.length} receipt photo${receipts.length === 1 ? '' : 's'} attached`; }) }), rNote),
+      h('div', { class: 'formfoot', style: 'padding-top:12px' }, h('button', { class: 'primary', type: 'submit', text: 'Save delivery' })));
+    const lForm = h('form', { class: 'panel', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const v = numOrNull(lForm.querySelector('#lvl').value);
+      if (v == null || v < 0) { toast('Enter the gallons the gauge shows.'); return; }
+      const entry = { id: uid('t'), kind: 'tanklevel', equipmentId: t.id, date: todayStr(), level: v, by: S.myName, createdAt: Date.now() };
+      try { await action(`Tank set to ${fmtN(v)} gal`, () => put('logs', entry)); S.formShown = false; render(true); } catch (err) { showErr(err); }
+    } },
+      h('h2', { text: 'Set level' }),
+      h('p', { class: 'muted', style: 'margin:12px 0 0;font-size:.88rem', text: 'Enter what the tank gauge or a stick reading shows now. Deliveries and fill-ups after this count up and down from it.' }),
+      h('div', { class: 'meterform', style: 'margin:12px 0 0' }, field('Gallons in the tank now', h('input', { id: 'lvl', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: st.level != null ? Math.max(0, Math.round(st.level)) : '' })),
+        h('button', { type: 'submit', text: 'Save level' })));
+    wrap.append(dForm, lForm);
+
+    // history
+    const evs = tankEvents(t).slice().reverse();
+    const hp = h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Tank history' }), h('span', { class: 'muted', text: String(evs.length) })));
+    if (!evs.length) hp.append(h('p', { class: 'muted', style: 'margin:14px 0 0', text: 'Nothing yet. Start with Set level, then add deliveries. Machine fill-ups from this tank show here too.' }));
+    for (const e of evs) {
+      const isDraw = e.kind === 'fuel';
+      const label = e.kind === 'delivery' ? `+${fmtN(e.gallons)} gal delivered` : e.kind === 'tanklevel' ? `Level set to ${fmtN(e.level)} gal` : `−${fmtN(e.gallons)} gal to ${(findEq(e.equipmentId) || {}).name || 'machine'}`;
+      const rs = S.photos.filter(ph => ph.log_id === e.id);
+      hp.append(h('div', { class: 'entry' },
+        h('div', { class: 'eh' }, h('span', { class: 'date', text: e.date ? fmtDate(e.date) : '' }),
+          h('b', { class: 'num', style: `color:var(--${e.kind === 'delivery' ? 'good' : isDraw ? 'ink' : 'warn'})`, text: label }),
+          numOrNull(e.cost) != null ? h('span', { class: 'num muted', text: money(e.cost) }) : null,
+          e.supplier ? h('span', { class: 'muted', text: e.supplier }) : null,
+          e.by ? h('span', { class: 'muted', style: 'font-size:.85rem', text: 'by ' + e.by }) : null,
+          h('span', { style: 'flex:1' }), isDraw ? null : removeBtn(e, 'Entry removed')),
+        rs.length ? h('div', { class: 'rthumbs' }, rs.map(ph => h('button', { type: 'button', class: 'thumb', onclick: () => viewPhoto(ph.id), 'aria-label': 'Open receipt' }, h('img', { src: ph.thumb, alt: '' })))) : null));
+    }
+    wrap.append(hp);
+    return wrap;
+  }
+  function tankForm(id) {
+    const ex = id ? findTank(id) : null;
+    if (id && !ex) return msg('Tank not found', 'It may have been deleted.');
+    const t = ex ? clone(ex) : { id: uid('k'), fuelType: 'Diesel' };
+    const inp = (k, attrs = {}) => h('input', { id: 'k-' + k, value: t[k] ?? '', ...attrs });
+    const form = h('form', { class: 'stack', onsubmit: async (ev) => {
+      ev.preventDefault();
+      const g = (k) => form.querySelector('#k-' + k).value.trim();
+      const out = { ...t, name: g('name'), fuelType: g('fuelType'), capacity: numOrNull(g('capacity')), alertAt: numOrNull(g('alertAt')) };
+      if (!out.name) { toast('Give the tank a name.'); return; }
+      if (out.capacity != null && out.alertAt != null && out.alertAt >= out.capacity) { toast('The reorder amount must be less than the capacity.'); return; }
+      try { await action(ex ? 'Tank saved' : 'Tank added', () => put('tanks', out)); go('#tank-' + out.id); } catch (err) { showErr(err); }
+    } },
+      h('div', { class: 'panel' }, h('div', { class: 'fgrid', style: 'padding-top:0' },
+        field('Tank name *', inp('name', { required: true, placeholder: 'e.g. Shop diesel tank' }), 'wide'),
+        field('Fuel type', inp('fuelType', { list: 'fueltypes', placeholder: 'Diesel' })),
+        field('Capacity (gallons)', inp('capacity', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', placeholder: 'e.g. 500' })),
+        field('Reorder alert at (gallons)', inp('alertAt', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', placeholder: 'e.g. 100' }), 'wide')),
+        h('datalist', { id: 'fueltypes' }, ['Diesel', 'Off-road diesel', 'Gasoline', 'DEF'].map(v => h('option', { value: v }))),
+        h('p', { class: 'muted', style: 'margin:12px 0 0;font-size:.85rem', text: 'When the tank drops to the reorder amount, phones with alerts on get a notification and the tank shows Reorder.' })),
+      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: ex ? '#tank-' + t.id : '#', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
+    const wrap = h('div', null, h('div', { class: 'top' }, backLink(ex ? '#tank-' + t.id : '#', ex ? (ex.name || 'Tank') : 'All equipment')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit tank' : 'Add fuel tank' }), form);
+    if (ex) {
+      const zone = h('div', { class: 'dangerzone' });
+      const idle = () => zone.replaceChildren(h('button', { class: 'danger small', type: 'button', text: 'Delete tank', onclick: () => zone.replaceChildren(
+        h('span', { style: 'flex:1 1 200px', text: `Delete ${ex.name}? Its deliveries and readings are removed too. Machine fill-ups stay in each machine's fuel log.` }),
+        h('button', { class: 'danger solid small', type: 'button', text: 'Delete', onclick: async () => {
+          try { await action('Tank deleted', async () => { for (const l of S.logs.filter(l => l.equipmentId === ex.id)) await del('logs', l.id); await del('tanks', ex.id); }); go(''); } catch (err) { showErr(err); }
+        } }),
+        h('button', { class: 'small', type: 'button', text: 'Keep it', onclick: idle })) }));
+      idle(); wrap.append(zone);
+    }
+    return wrap;
   }
 
   // ---------- photos & scanning ----------
@@ -1053,6 +1215,12 @@
       const parts = changed.map(k => k === 'meter' ? `hours ${b.meter ?? '—'} → ${a.meter ?? '—'}` : (FIELD_NAMES[k] || k));
       return `${d.name || 'Machine'}: changed ${parts.join(', ') || 'details'}`;
     }
+    if (hrow.table_name === 'tanks') return hrow.action === 'insert' ? `Added tank ${d.name || ''}` : hrow.action === 'delete' ? `Deleted tank ${d.name || ''}` : `Edited tank ${d.name || ''} (${d.capacity ?? '—'} gal capacity, reorder at ${d.alertAt ?? '—'})`;
+    if (hrow.table_name === 'logs' && (d.kind === 'delivery' || d.kind === 'tanklevel')) {
+      const tn = (findTank(d.equipmentId) || {}).name || 'Tank';
+      const what = d.kind === 'delivery' ? `delivery of ${d.gallons} gal` : `level reading ${d.level} gal`;
+      return hrow.action === 'delete' ? `${tn}: removed ${what}` : `${tn}: ${what}`;
+    }
     if (hrow.table_name === 'logs') {
       const m = (findEq(d.equipmentId) || {}).name || 'machine';
       if (d.kind === 'fuel') return hrow.action === 'insert' ? `${m}: fuel ${d.gallons} gal` : hrow.action === 'delete' ? `${m}: removed fuel entry (${d.gallons} gal)` : `${m}: edited fuel entry`;
@@ -1183,7 +1351,7 @@
     drawAlerts().catch(err => { console.error(err); body.replaceChildren(h('p', { class: 'muted', style: 'margin:0', text: 'Alerts are not available here.' })); });
     // dealers + history
     st.append(h('div', { class: 'panel' }, h('h2', { text: 'Dealers & history' }),
-      h('div', { class: 'chips', style: 'padding-top:14px' }, h('a', { class: 'btn', href: '#dealers', text: `Dealers (${S.contacts.length})` }), h('a', { class: 'btn', href: '#history', text: 'Edit history and undo' }))));
+      h('div', { class: 'chips', style: 'padding-top:14px' }, h('a', { class: 'btn', href: '#dealers', text: `Dealers (${S.contacts.length})` }), h('a', { class: 'btn', href: '#tank-new', text: '+ Add fuel tank' }), h('a', { class: 'btn', href: '#history', text: 'Edit history and undo' }))));
     // backup
     const fileIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: () => restorePick(fileIn, restoreBox) });
     const restoreBox = h('div');
@@ -1194,6 +1362,7 @@
         h('button', { type: 'button', text: 'Service log (spreadsheet)', onclick: () => exportServiceCsv() }),
         h('button', { type: 'button', text: 'Fuel log (spreadsheet)', onclick: () => exportFuelCsv() }),
         h('button', { type: 'button', text: 'Equipment list (spreadsheet)', onclick: () => exportEquipmentCsv() }),
+        h('button', { type: 'button', text: 'Fuel tank log (spreadsheet)', onclick: () => exportTankCsv() }),
         h('button', { type: 'button', text: 'Restore from backup…', onclick: () => fileIn.click() })),
       fileIn, restoreBox));
     // sync
@@ -1219,18 +1388,23 @@
   const eqName = (id) => (findEq(id) || {}).name || '';
   function exportBackup() {
     const data = { app: 'ruxer-farms', version: 2, exportedAt: new Date().toISOString(),
-      equipment: S.equipment.map(o => toRow('equipment', o)), logs: S.logs.map(o => toRow('logs', o)), contacts: S.contacts.map(o => toRow('contacts', o)) };
+      equipment: S.equipment.map(o => toRow('equipment', o)), logs: S.logs.map(o => toRow('logs', o)), contacts: S.contacts.map(o => toRow('contacts', o)), tanks: S.tanks.map(o => toRow('tanks', o)) };
     shareFile(`ruxer-farms-backup-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
   }
   function exportServiceCsv() {
-    const rows = S.logs.filter(l => l.kind !== 'fuel').sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const rows = S.logs.filter(l => !l.kind).sort((a, b) => String(a.date).localeCompare(String(b.date)));
     shareFile(`ruxer-service-log-${stamp()}.csv`, csv([['Date', 'Machine', 'Meter', 'Services', 'Work done', 'Parts', 'Cost', 'By'],
       ...rows.map(l => [l.date, eqName(l.equipmentId), l.meter, (l.taskNames || []).join('; '), l.work, l.parts, l.cost, l.by])]), 'text/csv');
   }
   function exportFuelCsv() {
     const rows = S.logs.filter(l => l.kind === 'fuel').sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    shareFile(`ruxer-fuel-log-${stamp()}.csv`, csv([['Date', 'Machine', 'Meter', 'Gallons', 'Cost', 'Notes', 'By'],
-      ...rows.map(l => [l.date, eqName(l.equipmentId), l.meter, l.gallons, l.cost, l.notes, l.by])]), 'text/csv');
+    shareFile(`ruxer-fuel-log-${stamp()}.csv`, csv([['Date', 'Machine', 'Meter', 'Gallons', 'From', 'Cost', 'Notes', 'By'],
+      ...rows.map(l => [l.date, eqName(l.equipmentId), l.meter, l.gallons, l.tankId ? (findTank(l.tankId) || {}).name : 'Elsewhere', l.cost, l.notes, l.by])]), 'text/csv');
+  }
+  function exportTankCsv() {
+    const rows = S.logs.filter(l => l.kind === 'delivery' || l.kind === 'tanklevel').sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    shareFile(`ruxer-tank-log-${stamp()}.csv`, csv([['Date', 'Tank', 'Type', 'Gallons', 'Cost', 'Supplier', 'By'],
+      ...rows.map(l => [l.date, (findTank(l.equipmentId) || {}).name, l.kind === 'delivery' ? 'Delivery' : 'Level reading', l.kind === 'delivery' ? l.gallons : l.level, l.cost, l.supplier, l.by])]), 'text/csv');
   }
   function exportEquipmentCsv() {
     shareFile(`ruxer-equipment-${stamp()}.csv`, csv([['Name', 'Category', 'Make', 'Model', 'Year', 'VIN / Serial', 'Meter', 'Unit', 'Attached to', 'Dealer', 'Parts', 'Service intervals', 'Notes'],

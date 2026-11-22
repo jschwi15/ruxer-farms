@@ -227,6 +227,20 @@ div.f { display: grid; gap: 5px; min-width: 0; }
 .cand { justify-content: flex-start; width: 100%; font: 600 1.05rem/1.2 var(--f-mono); letter-spacing: .04em; overflow-wrap: anywhere; text-align: left; }
 .keeprow { display: flex; gap: 10px; align-items: center; font-size: .9rem; }
 .keeprow input { width: 20px; height: 20px; accent-color: var(--green); }
+
+/* v5: fuel tanks */
+.tanks { display: grid; gap: 10px; margin-bottom: 14px; }
+.tankcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; gap: 10px; color: inherit; text-decoration: none; }
+.tankcard:hover { border-color: var(--muted); }
+.tankcard h3 { font-size: 1.4rem; line-height: 1.05; overflow-wrap: anywhere; }
+.tc-top { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.tankbar { position: relative; height: 14px; border-radius: 7px; background: var(--chip); }
+.tankbar.big { height: 26px; border-radius: 10px; }
+.tankbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: var(--good); }
+.tankbar i.s-soon { background: var(--warn); } .tankbar i.s-due { background: var(--bad); } .tankbar i.s-unknown { background: var(--muted); }
+.tankbar .mark { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; }
+.tankbig { font: 700 3rem/1 var(--f-display); }
+.tankbig span { font-size: 1.3rem; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -237,6 +251,6 @@ div.f { display: grid; gap: 5px; min-width: 0; }
 
 <script src="config.js?v=3"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
