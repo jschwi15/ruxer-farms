@@ -469,7 +469,7 @@
 
   function tabSpecs(e) {
     const frag = h('div', { class: 'stack' });
-    const facts = [['Make', e.make], ['Model', e.model], ['Year', e.year], ['Category', e.category], ['Location', e.location]].filter(([, v]) => v);
+    const facts = [['Make', e.make], ['Model', e.model], ['Year', e.year], ['Category', e.category]].filter(([, v]) => v);
     const copyBtn = h('button', { class: 'small', type: 'button', text: 'Copy', onclick: async (ev) => {
       try { await navigator.clipboard.writeText(e.vin); toast('VIN copied'); }
       catch { const r = document.createRange(); r.selectNodeContents(ev.target.previousSibling); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('VIN selected. Use your copy shortcut.'); }
@@ -1256,7 +1256,7 @@
       const name = f('name').value.trim();
       if (!name) { toast('Give the machine a name.'); f('name').focus(); return; }
       const out = { ...(existing ? clone(findEq(existing.id)) || e : e), name };
-      for (const k of ['category', 'make', 'model', 'year', 'vin', 'location']) out[k] = f(k).value.trim();
+      for (const k of ['category', 'make', 'model', 'year', 'vin']) out[k] = f(k).value.trim();
       out.vin = out.vin.toUpperCase();
       out.notes = f('notes').value.trim();
       out.parentId = parentSel.value || null;
@@ -1288,7 +1288,6 @@
           field('Attached to', parentSel),
           field('Meter type', unitSel),
           meterField,
-          field('Location', inp('location', { placeholder: 'Main shop' })),
           h('label', { class: 'f' }, h('span', null, 'Dealer ', h('a', { href: '#dealer-new', class: 'inl', style: 'text-transform:none;letter-spacing:0', text: '+ new' })), dealerSel),
           field('Notes', h('textarea', { id: 'f-notes', name: 'notes', value: e.notes || '', placeholder: 'Fluid capacities, quirks, grease points…' }), 'wide')),
         h('datalist', { id: 'cats' }, ['Tractor', 'Implement', 'Loader', 'Mower', 'Bucket', 'Baler', 'Tiller', 'Skid steer', 'Truck', 'Trailer', 'UTV', 'Generator'].map(c => h('option', { value: c })))),
