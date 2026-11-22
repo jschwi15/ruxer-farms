@@ -224,6 +224,7 @@
     if (s === 'history') return { name: 'history', id: null };
     if (s === 'settings') return { name: 'settings' };
     if (s === 'inventory') return { name: 'inventory' };
+    if (s === 'fuel') return { name: 'fuel' };
     if (s === 'item-new') return { name: 'item', id: null };
     if ((m = s.match(/^item-([A-Za-z0-9]+)$/))) return { name: 'item', id: m[1] };
     if (s === 'tank-new') return { name: 'tankedit', id: null };
@@ -263,6 +264,7 @@
     else if (v.name === 'dealers') node = dealersView();
     else if (v.name === 'dealer') { node = dealerForm(v.id); S.formShown = true; }
     else if (v.name === 'inventory') node = inventoryView();
+    else if (v.name === 'fuel') node = fuelView();
     else if (v.name === 'item') { node = itemForm(v.id); S.formShown = true; }
     else if (v.name === 'tank') node = tankView(v.id);
     else if (v.name === 'tankedit') { node = tankForm(v.id); S.formShown = true; }
@@ -271,10 +273,150 @@
       'No connection. Showing what is saved on this phone.',
       S.outbox.length ? ` ${S.outbox.length} change${S.outbox.length === 1 ? '' : 's'} will sync when you are back online.` : '') : null;
     $app.replaceChildren(...[banner, node].filter(Boolean));
+    updateChrome();
   }
   $app.addEventListener('focusout', () => setTimeout(() => { if (S.pendingRender) render(); }, 0));
   const msg = (t, p) => h('div', { class: 'empty' }, h('h2', { text: t }), h('p', { text: p }));
-  const backLink = (href, text) => h('a', { class: 'back', href, text: '← ' + text });
+  const backLink = (href, text) => h('a', { class: 'back', href }, icon('back'), text);
+
+  // ---------- app chrome: icons, tab bar, + button, install bar ----------
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function icon(name, cls = 'ic') {
+    const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('class', cls); s.setAttribute('aria-hidden', 'true');
+    const u = document.createElementNS(SVGNS, 'use'); u.setAttribute('href', '#i-' + name); s.append(u);
+    return s;
+  }
+  const eqIcon = (e) => {
+    const c = String(e.category || '').toLowerCase();
+    if (e.parentId || /implement|mower|cutter|bucket|baler|tiller|loader|attachment|disc|plow/.test(c)) return 'implement';
+    if (/truck|trailer|utv|vehicle|pickup/.test(c)) return 'truck';
+    return 'tractor';
+  };
+  const invIcon = (c) => c === 'Grease' ? 'grease' : c === 'Filters' ? 'filter' : c === 'Oil & fluids' ? 'drop' : c === 'Parts' ? 'wrench' : 'box';
+  function tabFor(v) {
+    if (['tank', 'tankedit', 'fuel'].includes(v.name)) return 'fuel';
+    if (['inventory', 'item'].includes(v.name)) return 'inventory';
+    if (['settings', 'dealers', 'dealer'].includes(v.name) || (v.name === 'history' && !v.id)) return 'more';
+    return 'equipment';
+  }
+  const $tabbar = document.getElementById('tabbar');
+  const $install = document.getElementById('installslot');
+  let fabEl = null;
+  function updateChrome() {
+    const ready = !S.setupMissing && !S.badLink && !S.needName && S.loaded;
+    $tabbar.hidden = !ready;
+    const active = tabFor(S.view);
+    for (const a of $tabbar.querySelectorAll('a')) {
+      if (a.dataset.tab === active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      a.querySelector('.tdot')?.remove();
+    }
+    if (ready && S.inventory.some(itemLow)) $tabbar.querySelector('[data-tab=inventory]').append(h('span', { class: 'tdot', 'aria-label': 'Items low' }));
+    if (ready && S.tanks.some(t => tankState(t).low)) $tabbar.querySelector('[data-tab=fuel]').append(h('span', { class: 'tdot', 'aria-label': 'Fuel low' }));
+    const wantFab = ready && S.view.name === 'list' && topLevel().length > 0;
+    if (wantFab && !fabEl) { fabEl = h('a', { class: 'fab', href: '#new', 'aria-label': 'Add equipment' }, icon('plus')); document.body.append(fabEl); }
+    if (!wantFab && fabEl) { fabEl.remove(); fabEl = null; }
+    drawInstall(ready);
+  }
+
+  // Add to Home Screen: Android/desktop Chrome can install directly; iPhone needs the Share menu.
+  let deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); deferredInstall = ev; updateChrome(); });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; ls.set('ruxer-installed', '1'); updateChrome(); });
+  const standalone = () => navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  const onIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function iosBrowser() {
+    const ua = navigator.userAgent;
+    if (/FBAN|FBAV|Instagram|Line\/|GSA\/|Snapchat|LinkedInApp|MicroMessenger/.test(ua)) return 'inapp';
+    if (/CriOS/.test(ua)) return 'chrome';
+    if (/FxiOS/.test(ua)) return 'firefox';
+    if (/EdgiOS/.test(ua)) return 'edge';
+    if (navigator.brave) return 'brave';
+    return 'safari';
+  }
+  let installHiddenThisVisit = false;
+  function drawInstall(ready) {
+    const show = ready && !standalone() && !installHiddenThisVisit && (deferredInstall || onIOS());
+    document.body.classList.toggle('with-install', !!show);
+    if (!show) { $install.replaceChildren(); return; }
+    if ($install.firstChild) return;
+    $install.append(h('div', { class: 'installbar', role: 'region', 'aria-label': 'Add to Home Screen' },
+      h('img', { src: 'logo-180.png', alt: '' }),
+      h('div', { class: 'txt' }, h('b', { text: 'Get the Ruxer Farms app' }), 'Opens full screen from your home screen'),
+      h('button', { class: 'primary small', type: 'button', text: 'Add to Home Screen', onclick: startInstall }),
+      h('button', { class: 'x', type: 'button', 'aria-label': 'Hide for now', text: '✕', onclick: () => { installHiddenThisVisit = true; updateChrome(); } })));
+  }
+  async function startInstall() {
+    if (deferredInstall) {
+      deferredInstall.prompt();
+      try { const r = await deferredInstall.userChoice; if (r && r.outcome === 'accepted') installHiddenThisVisit = true; } catch { }
+      deferredInstall = null; updateChrome(); return;
+    }
+    const b = iosBrowser();
+    const share = h('span', { class: 'sharei' }, icon('share', 'ic'));
+    const where = b === 'safari' ? 'bottom' : b === 'chrome' ? 'top' : 'bottom';
+    const steps = {
+      safari: [[ 'Tap the Share button ', share, ' at the bottom of the screen (on some iPhones it is in the ⋯ menu next to the address).' ], [ 'Scroll down and tap ', h('b', { text: 'Add to Home Screen' }), '.' ], [ 'Leave ', h('b', { text: 'Open as Web App' }), ' on and tap ', h('b', { text: 'Add' }), '.' ]],
+      chrome: [[ 'Tap the Share button ', share, ' at the top right, in the address bar.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '. If you do not see it, tap ', h('b', { text: 'Edit Actions' }), ' and add it.' ], [ 'Tap ', h('b', { text: 'Add' }), '.' ]],
+      brave: [[ 'Tap the ', h('b', { text: '⋯' }), ' menu at the bottom right, then ', h('b', { text: 'Open in Safari' }), '. Brave on iPhone cannot add home-screen apps.' ], [ 'In Safari, tap Share ', share, ' and then ', h('b', { text: 'Add to Home Screen' }), '.' ]],
+      firefox: [[ 'Tap the ', h('b', { text: '☰' }), ' menu, then ', h('b', { text: 'Share' }), '.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '.' ]],
+      edge: [[ 'Tap the ', h('b', { text: '⋯' }), ' menu, then ', h('b', { text: 'Share' }), '.' ], [ 'Tap ', h('b', { text: 'Add to Home Screen' }), '.' ]],
+      inapp: [[ 'This page is open inside another app, which cannot add home-screen apps.' ], [ 'Tap ', h('b', { text: 'Copy link' }), ' below, open ', h('b', { text: 'Safari' }), ', paste it in the address bar, then tap Add to Home Screen again.' ]]
+    }[b];
+    const body = h('div', { class: 'guide' },
+      h('p', { class: 'muted', style: 'margin:0;font-size:.9rem', text: 'iPhone only lets you add apps from the Share menu, so it takes two quick taps:' }),
+      h('ol', null, steps.map(s => h('li', null, s))),
+      b === 'inapp' || b === 'brave' ? h('button', { type: 'button', class: 'small', text: 'Copy link', onclick: async () => { try { await navigator.clipboard.writeText(appUrl()); toast('Link copied'); } catch { toast('Copy the address from the address bar'); } } }) : null,
+      h('p', { class: 'muted', style: 'margin:0;font-size:.82rem', text: 'After that, open Ruxer Farms from its icon. It opens full screen and this bar goes away.' }));
+    const sh = sheet('Add to Home Screen', body);
+    if (b === 'safari' || b === 'chrome') {
+      const arrow = h('div', { class: 'pointer' + (where === 'top' ? ' top right' : '') }, where === 'top' ? [icon('up'), 'Share'] : ['Share', icon('down')]);
+      document.body.append(arrow);
+      const obs = new MutationObserver(() => { if (!document.body.contains(body)) { arrow.remove(); obs.disconnect(); } });
+      obs.observe(document.body, { childList: true });
+    }
+  }
+
+  // Swipe a service row left to mark it done.
+  function swipeable(row, onDone) {
+    const wrap = h('div', { class: 'rowwrap' }, h('div', { class: 'swipeback', 'aria-hidden': 'true' }, icon('check'), 'Done'), row);
+    let x0 = null, y0 = null, dx = 0, locked = null;
+    row.addEventListener('pointerdown', (ev) => { if (ev.pointerType === 'mouse' || ev.target.closest('button, a, input')) return; x0 = ev.clientX; y0 = ev.clientY; dx = 0; locked = null; });
+    row.addEventListener('pointermove', (ev) => {
+      if (x0 == null) return;
+      const mx = ev.clientX - x0, my = ev.clientY - y0;
+      if (locked == null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) locked = Math.abs(mx) > Math.abs(my) ? 'x' : 'y';
+      if (locked !== 'x') return;
+      dx = Math.min(0, Math.max(-140, mx));
+      row.classList.add('dragging'); row.style.transform = `translateX(${dx}px)`;
+    });
+    const end = () => {
+      if (x0 == null) return;
+      row.classList.remove('dragging');
+      const fire = locked === 'x' && dx < -90;
+      row.style.transform = '';
+      x0 = null; locked = null;
+      if (fire) { if (navigator.vibrate) navigator.vibrate(12); onDone(); }
+    };
+    row.addEventListener('pointerup', end); row.addEventListener('pointercancel', end);
+    return wrap;
+  }
+
+  // Fuel tab
+  function fuelView() {
+    const wrap = h('div', null, h('div', { class: 'top' }, h('h1', { style: 'font-size:1.5rem', text: 'Fuel' }), h('span', { class: 'spacer' }), h('a', { class: 'btn small', href: '#tank-new' }, icon('plus'), 'Add tank')));
+    if (!S.tanks.length) { wrap.append(msg('No fuel tanks yet', 'Add your farm tank to track deliveries, what each machine draws, and when to reorder.')); return wrap; }
+    wrap.append(h('div', { class: 'tanks' }, S.tanks.map(tankCard)));
+    return wrap;
+  }
+  function gaugeRing(st) {
+    const r = 28, c = 2 * Math.PI * r, p = st.pct ?? 0;
+    const col = st.status === 'due' ? '#ff6b5a' : st.status === 'soon' ? '#f2a93b' : st.status === 'unknown' ? '#9aa8a0' : '#5fbf6e';
+    const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 68 68'); s.setAttribute('class', 'gauge'); s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = `<circle cx="34" cy="34" r="${r}" fill="none" stroke="rgba(201,206,211,.14)" stroke-width="8"/>` +
+      `<circle cx="34" cy="34" r="${r}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - p)).toFixed(1)}" transform="rotate(-90 34 34)"/>` +
+      `<text x="34" y="39" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="800" font-size="15" fill="#f3f5f2">${st.pct != null ? Math.round(p * 100) + '%' : '—'}</text>`;
+    return s;
+  }
 
   function updateBadge() {
     try {
@@ -295,6 +437,7 @@
       if (!n) return;
       ls.set('ruxer-name', n); S.myName = n; S.needName = false; render(true);
     } },
+      h('img', { class: 'logo', src: 'logo-180.png', alt: 'Ruxer Farms emblem' }),
       h('div', { class: 'eyebrow', text: 'Equipment maintenance' }),
       h('h1', { text: 'Ruxer Farms' }),
       h('p', { class: 'muted', style: 'margin:0', text: 'Your name goes on the services and changes you make from this phone.' }),
@@ -306,11 +449,10 @@
   // ---------- list ----------
   function list() {
     const tops = topLevel();
+    const hr = new Date().getHours();
+    const greet = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (S.myName ? ', ' + S.myName : '');
     const frag = h('div', null, h('div', { class: 'top' },
-      h('a', { class: 'brand', href: '#', text: 'Ruxer Farms' }), h('span', { class: 'spacer' }),
-      tops.length ? h('a', { class: 'btn primary small', href: '#new', text: '+ Add' }) : null,
-      h('a', { class: 'btn small', href: '#inventory' }, 'Inventory', S.inventory.some(itemLow) ? h('span', { class: 'dot', 'aria-label': 'items low' }) : null),
-      h('a', { class: 'btn small', href: '#settings', text: 'Settings' })));
+      h('a', { class: 'brand', href: '#' }, h('img', { src: 'logo-180.png', alt: 'Ruxer Farms emblem' }), h('span', null, h('b', { text: 'Ruxer Farms' }), h('small', { text: greet })))));
     if (!tops.length) {
       frag.append(h('div', { class: 'empty' },
         h('div', { class: 'eyebrow', text: 'Nothing on the log yet' }),
@@ -322,11 +464,11 @@
     const all = S.equipment.map(e => ({ e, s: eqStatus(e) }));
     const count = (l) => all.filter(x => x.s.level === l).length;
     frag.append(h('div', { class: 'ltally' },
-      h('div', null, h('b', { class: 'num', text: tops.length }), h('span', { text: tops.length === 1 ? 'Machine' : 'Machines' })),
       h('div', null, h('b', { class: 'num', style: 'color:var(--bad)', text: count('due') }), h('span', { text: 'Overdue' })),
       h('div', null, h('b', { class: 'num', style: 'color:var(--warn)', text: count('soon') }), h('span', { text: 'Due soon' })),
       h('div', null, h('b', { class: 'num', style: 'color:var(--good)', text: count('ok') }), h('span', { text: 'Good' }))));
     if (S.tanks.length) frag.append(h('div', { class: 'tanks' }, S.tanks.map(tankCard)));
+    frag.append(h('div', { class: 'sectionhd' }, h('h2', { text: 'Equipment' }), h('span', { class: 'muted', style: 'font-size:.82rem', text: `${tops.length} machine${tops.length === 1 ? '' : 's'}` })));
     const cards = h('div', { class: 'cards' });
     const draw = () => {
       const q = S.search.trim().toLowerCase();
@@ -366,9 +508,10 @@
       } }, hasMeter ? `${fmtN(e.meter)} ${u}` : `Set ${u === 'hrs' ? 'hours' : 'miles'}`, h('span', { class: 'pen', 'aria-hidden': 'true', text: '✎' }));
     }
     return h('div', { class: 'card', role: 'link', tabindex: '0', onclick: open, onkeydown: (ev) => { if (ev.key === 'Enter' && ev.target === ev.currentTarget) open(); } },
-      h('div', { style: 'display:grid;gap:2px;min-width:0' }, h('div', { class: 'eyebrow', text: e.category || 'Machine' }), h('h3', { text: e.name || 'Unnamed machine' })),
+      h('div', { class: 'thumbic' }, icon(eqIcon(e))),
+      h('div', { style: 'display:grid;gap:3px;min-width:0' }, h('h3', { text: e.name || 'Unnamed machine' })),
       chip(s.level),
-      h('div', { class: 'meta' }, e.vin ? h('span', { class: 'mono', text: 'VIN ' + e.vin }) : null),
+      h('div', { class: 'meta', text: [e.category || 'Machine', hasMeter ? `${fmtN(e.meter)} ${u}` : null].filter(Boolean).join(' · ') }),
       h('div', { class: 'meterrow' }, meterUi),
       kids.length ? h('div', { class: 'kids' }, kids.map(k => {
         const ks = eqStatus(k);
@@ -379,10 +522,10 @@
   // ---------- detail ----------
   function detail(id) {
     const e = findEq(id);
-    if (!e) return h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment')), msg('Machine not found', 'It may have been deleted.'));
+    if (!e) return h('div', null, h('div', { class: 'top' }, backLink('#', 'Equipment')), msg('Machine not found', 'It may have been deleted.'));
     const eq = effEq(e), u = unitLabel(eq.meterUnit), parent = parentOf(e);
     const wrap = h('div');
-    wrap.append(h('div', { class: 'top' }, parent ? backLink('#eq-' + parent.id, parent.name || 'Machine') : backLink('#', 'All equipment'), h('span', { class: 'spacer' }),
+    wrap.append(h('div', { class: 'top' }, parent ? backLink('#eq-' + parent.id, parent.name || 'Machine') : backLink('#', 'Equipment'), h('span', { class: 'spacer' }),
       h('a', { class: 'btn small', href: '#edit-' + e.id, text: 'Edit' })));
     const hasMeter = eq.meter != null && eq.meter !== '';
     const borrowed = e.meterUnit === 'parent';
@@ -426,7 +569,7 @@
     frag.append(h('a', { class: 'btn primary big', href: '#log-' + e.id, text: '+ Log service' }));
     const ivs = (eq.intervals || []).map((iv, i) => ({ iv, i, s: intervalStatus(eq, iv) }))
       .sort((a, b) => (RANK[b.s.level] - RANK[a.s.level]) || ((b.s.pct || 0) - (a.s.pct || 0)) || (a.i - b.i));
-    const panel = h('div', { class: 'panel svc' }, h('h2', { text: 'Service due' }));
+    const panel = h('div', { class: 'panel svc' }, h('div', { class: 'hd2' }, h('h2', { text: 'Service' }), ivs.length ? h('span', { class: 'swipetip', text: 'Swipe left to mark done' }) : null));
     if (!ivs.length) panel.append(h('p', { class: 'muted' }, 'No service intervals yet. ', h('a', { href: '#edit-' + e.id, class: 'inl', text: 'Add them' })));
     const hasMeter = eq.meter != null && eq.meter !== '';
     for (const { iv, s } of ivs) {
@@ -450,7 +593,7 @@
           h('a', { class: 'btn small', href: '#log-' + e.id, text: 'Add details' }),
           h('button', { class: 'small', type: 'button', text: 'Cancel', onclick: () => { S.confirmIv = null; render(true); } })));
       }
-      panel.append(row);
+      panel.append(swipeable(row, () => { S.confirmIv = iv.id; render(true); }));
     }
     frag.append(panel);
     if (!parentOf(e)) {
@@ -649,8 +792,7 @@
     invTimers[id] = setTimeout(() => { const cur = findItem(id); if (cur) put('inventory', { ...cur, updatedBy: S.myName }, false).catch(showErr); }, 900);
   }
   function inventoryView() {
-    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment'), h('span', { class: 'spacer' }), h('a', { class: 'btn primary small', href: '#item-new', text: '+ Add item' })),
-      h('h1', { style: 'font-size:2rem;margin-bottom:14px', text: 'Inventory' }));
+    const wrap = h('div', null, h('div', { class: 'top' }, h('h1', { style: 'font-size:1.5rem', text: 'Inventory' }), h('span', { class: 'spacer' }), h('a', { class: 'btn primary small', href: '#item-new' }, icon('plus'), 'Add item')));
     const items = S.inventory.slice();
     if (!items.length) { wrap.append(msg('Nothing in inventory yet', 'Add grease, oil, filters and other supplies you keep on hand. Set a reorder amount and the item shows Low when you get down to it.')); return wrap; }
     const low = items.filter(itemLow);
@@ -674,6 +816,7 @@
   function invRow(i) {
     const lowNow = itemLow(i);
     return h('div', { class: 'invrow' },
+      h('div', { class: 'iico' }, icon(invIcon(i.category))),
       h('a', { class: 'invname', href: '#item-' + i.id },
         h('b', { text: i.name || 'Item' }),
         h('span', { class: 'muted', text: [i.partNumber, numOrNull(i.minQty) != null ? `reorder at ${fmtN(i.minQty)}` : null].filter(Boolean).join(' · ') })),
@@ -760,6 +903,7 @@
   function tankCard(t) {
     const st = tankState(t);
     return h('a', { class: 'tankcard', href: '#tank-' + t.id },
+      gaugeRing(st),
       h('div', { class: 'tc-top' }, h('div', { style: 'min-width:0' }, h('div', { class: 'eyebrow', text: t.fuelType || 'Fuel' }), h('h3', { text: t.name || 'Fuel tank' })),
         st.low ? h('span', { class: 'chipst s-due', text: 'Reorder' }) : st.status === 'soon' ? h('span', { class: 'chipst s-soon', text: 'Getting low' }) : st.level == null ? h('span', { class: 'chipst', text: 'Set level' }) : h('span', { class: 'chipst s-ok', text: 'OK' })),
       tankBar(t, st),
@@ -767,10 +911,10 @@
   }
   function tankView(id) {
     const t = findTank(id);
-    if (!t) return h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment')), msg('Tank not found', 'It may have been deleted.'));
+    if (!t) return h('div', null, h('div', { class: 'top' }, backLink('#fuel', 'Fuel')), msg('Tank not found', 'It may have been deleted.'));
     const st = tankState(t);
     const wrap = h('div', { class: 'stack' });
-    wrap.append(h('div', { class: 'top', style: 'margin-bottom:0' }, backLink('#', 'All equipment'), h('span', { class: 'spacer' }), h('a', { class: 'btn small', href: '#tankedit-' + t.id, text: 'Edit' })));
+    wrap.append(h('div', { class: 'top', style: 'margin-bottom:0' }, backLink('#fuel', 'Fuel'), h('span', { class: 'spacer' }), h('a', { class: 'btn small', href: '#tankedit-' + t.id, text: 'Edit' })));
     wrap.append(h('div', { class: 'panel stack' },
       h('div', null, h('div', { class: 'eyebrow', text: t.fuelType || 'Fuel' }), h('h1', { style: 'font-size:2rem', text: t.name || 'Fuel tank' })),
       h('div', { class: 'tankbig num' }, st.level == null ? '—' : fmtN(Math.max(0, st.level)), h('span', { text: st.level == null ? '' : ' gal' + (st.cap ? ` of ${fmtN(st.cap)}` : '') })),
@@ -859,8 +1003,8 @@
         field('Reorder alert at (gallons)', inp('alertAt', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', placeholder: 'e.g. 100' }), 'wide')),
         h('datalist', { id: 'fueltypes' }, ['Diesel', 'Off-road diesel', 'Gasoline', 'DEF'].map(v => h('option', { value: v }))),
         h('p', { class: 'muted', style: 'margin:12px 0 0;font-size:.85rem', text: 'When the tank drops to the reorder amount, phones with alerts on get a notification and the tank shows Reorder.' })),
-      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: ex ? '#tank-' + t.id : '#', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
-    const wrap = h('div', null, h('div', { class: 'top' }, backLink(ex ? '#tank-' + t.id : '#', ex ? (ex.name || 'Tank') : 'All equipment')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit tank' : 'Add fuel tank' }), form);
+      h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: ex ? '#tank-' + t.id : '#fuel', text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
+    const wrap = h('div', null, h('div', { class: 'top' }, backLink(ex ? '#tank-' + t.id : '#fuel', ex ? (ex.name || 'Tank') : 'Fuel')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: ex ? 'Edit tank' : 'Add fuel tank' }), form);
     if (ex) {
       const zone = h('div', { class: 'dangerzone' });
       const idle = () => zone.replaceChildren(h('button', { class: 'danger small', type: 'button', text: 'Delete tank', onclick: () => zone.replaceChildren(
@@ -1298,7 +1442,7 @@
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: existing ? '#eq-' + e.id : (parentPre ? '#eq-' + parentPre.id : '#'), text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save' })));
     syncMeter();
     return h('div', null,
-      h('div', { class: 'top' }, backLink(existing ? '#eq-' + e.id : (parentPre ? '#eq-' + parentPre.id : '#'), existing ? (existing.name || 'Machine') : (parentPre ? parentPre.name : 'All equipment'))),
+      h('div', { class: 'top' }, backLink(existing ? '#eq-' + e.id : (parentPre ? '#eq-' + parentPre.id : '#'), existing ? (existing.name || 'Machine') : (parentPre ? parentPre.name : 'Equipment'))),
       h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: existing ? 'Edit machine' : (parentPre ? 'Add implement' : 'Add equipment') }),
       form);
   }
@@ -1306,7 +1450,7 @@
   // ---------- dealers ----------
   function dealersView() {
     const ds = S.contacts.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#settings', 'Settings'), h('span', { class: 'spacer' }), h('a', { class: 'btn primary small', href: '#dealer-new', text: '+ Add dealer' })),
+    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#settings', 'More'), h('span', { class: 'spacer' }), h('a', { class: 'btn primary small', href: '#dealer-new', text: '+ Add dealer' })),
       h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: 'Dealers' }));
     if (!ds.length) wrap.append(msg('No dealers yet', 'Add the dealers and parts counters you use, then pick one for each machine.'));
     const st = h('div', { class: 'stack' });
@@ -1377,7 +1521,7 @@
   }
   function historyView(id) {
     const e = id ? findEq(id) : null;
-    const wrap = h('div', null, h('div', { class: 'top' }, id ? backLink('#eq-' + id, (e && e.name) || 'Machine') : backLink('#settings', 'Settings')),
+    const wrap = h('div', null, h('div', { class: 'top' }, id ? backLink('#eq-' + id, (e && e.name) || 'Machine') : backLink('#settings', 'More')),
       h('h1', { style: 'font-size:2rem;margin-bottom:4px', text: 'Edit history' }),
       h('p', { class: 'muted', style: 'margin:0 0 16px', text: (id ? (e && e.name) + ': ' : 'All machines: ') + 'every change, newest first. Undo puts a record back the way it was before that change.' }));
     const box = h('div', { class: 'panel' }, h('p', { class: 'muted', style: 'margin:0', text: 'Loading…' }));
@@ -1431,7 +1575,7 @@
     return id;
   }
   function settingsView() {
-    const wrap = h('div', null, h('div', { class: 'top' }, backLink('#', 'All equipment')), h('h1', { style: 'font-size:2rem;margin-bottom:16px', text: 'Settings' }));
+    const wrap = h('div', null, h('div', { class: 'top' }, h('h1', { style: 'font-size:1.5rem', text: 'More' })));
     const st = h('div', { class: 'stack' });
     wrap.append(st);
     // name
