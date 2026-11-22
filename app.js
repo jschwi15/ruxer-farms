@@ -1,4 +1,4 @@
-/* Ruxer Farms LLC — equipment maintenance app.
+/* Ruxer Farms — equipment maintenance app.
    Data lives in Supabase (tables equipment, logs, contacts, history, push_subs).
    Access: the link's ?k= code is sent as x-farm-key on every request; the
    database's row-level security refuses requests without it. */
@@ -283,7 +283,7 @@
       ls.set('ruxer-name', n); S.myName = n; S.needName = false; render(true);
     } },
       h('div', { class: 'eyebrow', text: 'Equipment maintenance' }),
-      h('h1', { text: 'Ruxer Farms LLC' }),
+      h('h1', { text: 'Ruxer Farms' }),
       h('p', { class: 'muted', style: 'margin:0', text: 'Your name goes on the services and changes you make from this phone.' }),
       field('Your name', h('input', { id: 'name', name: 'name', autocomplete: 'name', required: true, value: S.myName || '' })),
       h('button', { class: 'primary big', type: 'submit', text: 'Continue' }));
@@ -294,7 +294,7 @@
   function list() {
     const tops = topLevel();
     const frag = h('div', null, h('div', { class: 'top' },
-      h('a', { class: 'brand', href: '#', text: 'Ruxer Farms LLC' }), h('span', { class: 'spacer' }),
+      h('a', { class: 'brand', href: '#', text: 'Ruxer Farms' }), h('span', { class: 'spacer' }),
       tops.length ? h('a', { class: 'btn primary small', href: '#new', text: '+ Add' }) : null,
       h('a', { class: 'btn small', href: '#settings', text: 'Settings' })));
     if (!tops.length) {
