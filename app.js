@@ -440,7 +440,7 @@
           h('button', { type: 'button', text: 'Done', 'aria-label': 'Mark ' + (iv.task || 'service') + ' done', onclick: () => { S.confirmIv = S.confirmIv === iv.id ? null : iv.id; render(true); } })));
       if (S.confirmIv === iv.id) {
         row.append(h('div', { class: 'confirm' },
-          h('span', { text: `Record ${iv.task || 'this service'} as done today${hasMeter ? ` at ${fmtN(eq.meter)} ${u}` : ''}?` + (hasMeter ? '' : ' Set the hour meter first to track by hours.') }),
+          h('span', { text: `Record ${iv.task || 'this service'} as done today${hasMeter ? ` at ${fmtN(eq.meter)} ${u}` : ''}?` + (hasMeter ? '' : ' Set the hour meter first to track by hours.') + (usesFor(e, [iv.id]).length ? ` Takes ${usedText(usesFor(e, [iv.id]))} out of inventory.` : '') }),
           h('button', { class: 'primary small', type: 'button', text: 'Record it', onclick: async (ev) => {
             ev.target.disabled = true;
             try { await action((iv.task || 'Service') + ' recorded', () => recordService(e.id, { date: todayStr(), meter: hasMeter ? Number(eq.meter) : null, done: [iv.id] })); S.confirmIv = null; }
@@ -538,13 +538,16 @@
       (l.taskNames || []).length ? h('div', { class: 'chips' }, l.taskNames.map(t => h('span', { class: 'chip', text: t }))) : null,
       l.work ? h('p', { text: l.work }) : null,
       l.parts ? h('p', { class: 'muted' }, 'Parts: ', l.parts) : null,
+      (l.used || []).length ? h('p', { class: 'muted' }, 'From inventory: ', usedText(l.used)) : null,
       (() => { const rs = S.photos.filter(ph => ph.log_id === l.id); return rs.length ? h('div', { class: 'rthumbs' }, rs.map(ph => h('button', { type: 'button', class: 'thumb', onclick: () => viewPhoto(ph.id), 'aria-label': 'Open receipt' }, h('img', { src: ph.thumb, alt: '' })))) : null; })()));
     return p;
   }
   function removeBtn(l, label) {
     const box = h('span');
     const idle = () => box.replaceChildren(h('button', { class: 'small danger', type: 'button', text: 'Remove', onclick: () => box.replaceChildren(
-      h('button', { class: 'small danger solid', type: 'button', text: 'Remove', onclick: async () => { try { await action(label, () => del('logs', l.id)); } catch (err) { showErr(err); } } }),
+      h('button', { class: 'small danger solid', type: 'button', text: 'Remove', onclick: async () => {
+        try { await action((l.used || []).length ? label + '; stock returned' : label, async () => { await del('logs', l.id); if ((l.used || []).length) await takeStock(l.used, +1); }); } catch (err) { showErr(err); }
+      } }),
       h('button', { class: 'small', type: 'button', text: 'Cancel', onclick: idle })) }));
     idle();
     return box;
@@ -1076,12 +1079,40 @@
   }
 
   // ---------- service ----------
-  async function recordService(eqId, { date, meter, done, work, parts, cost }) {
+  // Inventory a service uses, from each interval's "uses" list: [{ itemId, qty }].
+  function usesFor(e, doneIds) {
+    const tot = new Map();
+    for (const iv of e.intervals || []) if (doneIds.includes(iv.id)) for (const u of iv.uses || []) {
+      const q = numOrNull(u.qty); if (u.itemId && q && findItem(u.itemId)) tot.set(u.itemId, (tot.get(u.itemId) || 0) + q);
+    }
+    return [...tot.entries()].map(([itemId, qty]) => ({ itemId, qty }));
+  }
+  const usedText = (used) => (used || []).map(u => `${fmtN(u.qty)} ${u.unit || ''} ${u.name || (findItem(u.itemId) || {}).name || 'item'}`.replace(/\s+/g, ' ').trim()).join(', ');
+  async function takeStock(used, sign) {
+    for (const u of used || []) {
+      const it = findItem(u.itemId); if (!it) continue;
+      await put('inventory', { ...it, qty: Math.max(0, Math.round(((numOrNull(it.qty) ?? 0) + sign * Number(u.qty)) * 100) / 100) });
+    }
+  }
+  function useRow(box, u = {}) {
+    const sel = h('select', { 'data-u': 'item', 'aria-label': 'Inventory item' }, h('option', { value: '', text: 'Choose item…' }),
+      S.inventory.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(i => h('option', { value: i.id, text: `${i.name}${i.unit ? ' (' + i.unit + ')' : ''} · ${fmtN(numOrNull(i.qty) ?? 0)} on hand` })));
+    sel.value = u.itemId || '';
+    const qty = h('input', { 'data-u': 'qty', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: u.qty ?? 1, 'aria-label': 'Quantity used' });
+    const row = h('div', { class: 'userow' }, sel, qty, h('button', { type: 'button', class: 'small danger', text: '✕', 'aria-label': 'Remove item', onclick: () => { row.remove(); box.dispatchEvent(new Event('input')); } }));
+    box.append(row);
+    return row;
+  }
+  const readUses = (box) => box ? [...box.children].filter(r => r.classList.contains('userow')).map(r => ({ itemId: r.querySelector('[data-u=item]').value, qty: numOrNull(r.querySelector('[data-u=qty]').value) })).filter(u => u.itemId && u.qty > 0) : [];
+
+  async function recordService(eqId, { date, meter, done, work, parts, cost, used }) {
     const e = findEq(eqId);
+    const snap = (used ?? usesFor(e, done)).filter(u => findItem(u.itemId)).map(u => { const it = findItem(u.itemId); return { itemId: u.itemId, qty: u.qty, name: it.name, unit: it.unit || '' }; });
     const log = { id: uid('l'), equipmentId: eqId, date, meter, tasks: done,
       taskNames: done.map(d => ((e.intervals || []).find(i => i.id === d) || {}).task || 'Service'),
-      work: work || '', parts: parts || '', cost: cost ?? null, by: S.myName, createdAt: Date.now() };
+      work: work || '', parts: parts || '', cost: cost ?? null, used: snap, by: S.myName, createdAt: Date.now() };
     await put('logs', log);
+    await takeStock(snap, -1);
     const next = clone(findEq(eqId) || e);
     next.intervals = (next.intervals || []).map(iv => {
       if (!done.includes(iv.id)) return iv;
@@ -1098,6 +1129,12 @@
     const ivs = (e.intervals || []).map(iv => ({ iv, s: intervalStatus(eq, iv) }));
     let receipts = [];
     const receiptNote = h('span', { class: 'muted', style: 'font-size:.85rem' });
+    const usedBox = h('div', { class: 'usebox' });
+    let usesTouched = false;
+    usedBox.addEventListener('input', () => { usesTouched = true; });
+    usedBox.addEventListener('change', () => { usesTouched = true; });
+    const checkedIds = () => [...form.querySelectorAll('input[name=task]:checked')].map(c => c.value);
+    const fillDefaults = () => { if (usesTouched) return; usedBox.replaceChildren(); usesFor(e, checkedIds()).forEach(u => useRow(usedBox, u)); };
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
       const el = form.elements;
@@ -1107,7 +1144,8 @@
       const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
       try {
         let logId = null;
-        await action('Service logged', async () => { logId = await recordService(e.id, { date: el.date.value || todayStr(), meter: numOrNull(el.meter.value), done, work, parts: el.parts.value.trim(), cost: numOrNull(el.cost.value) }); });
+        const used = S.inventory.length ? readUses(usedBox) : undefined;
+        await action('Service logged', async () => { logId = await recordService(e.id, { date: el.date.value || todayStr(), meter: numOrNull(el.meter.value), done, work, parts: el.parts.value.trim(), cost: numOrNull(el.cost.value), used }); });
         if (receipts.length) { btn.textContent = 'Saving receipt…'; try { await savePhotos(e.id, receipts, 'receipt', logId); } catch (err) { showErr(err); } }
         go('#eq-' + e.id);
       } catch (err) { showErr(err); btn.disabled = false; btn.textContent = 'Save service'; }
@@ -1118,8 +1156,12 @@
           field(`${meterName(eq.meterUnit)} (${u})`, h('input', { id: 'l-meter', name: 'meter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: eq.meter ?? '' })))),
       ivs.length ? h('div', { class: 'panel' }, h('h2', { text: 'Services done' }),
         h('div', { class: 'checks', style: 'padding-top:14px' }, ivs.map(({ iv, s }) => h('label', null,
-          h('input', { type: 'checkbox', name: 'task', value: iv.id, checked: S.confirmIv === iv.id }),
+          h('input', { type: 'checkbox', name: 'task', value: iv.id, checked: S.confirmIv === iv.id, onchange: () => fillDefaults() }),
           h('span', { style: 'flex:1;min-width:0' }, iv.task || 'Service'), chip(s.level))))) : null,
+      S.inventory.length ? h('div', { class: 'panel' }, h('h2', { text: 'Inventory used' }),
+        h('p', { class: 'muted', style: 'margin:12px 0 0;font-size:.88rem', text: 'These come off the shelf when you save. Change the amounts or add other items you used.' }),
+        usedBox,
+        h('button', { type: 'button', class: 'small', style: 'margin-top:10px', text: '+ Add item', onclick: () => { usesTouched = true; useRow(usedBox); } })) : null,
       h('div', { class: 'panel stack' },
         field('Work done', h('textarea', { id: 'l-work', name: 'work', placeholder: 'Changed oil and filter, greased loader pins…' })),
         h('div', { class: 'fgrid', style: 'padding-top:0' },
@@ -1127,6 +1169,7 @@
           field('Cost ($, optional)', h('input', { id: 'l-cost', name: 'cost', type: 'number', inputmode: 'decimal', step: '0.01', min: '0' }))),
         h('div', { class: 'chips' }, h('button', { type: 'button', class: 'small', text: '🧾 Attach receipt', onclick: () => pickPhotos(true, (files) => { receipts = receipts.concat(files); receiptNote.textContent = `${receipts.length} receipt photo${receipts.length === 1 ? '' : 's'} attached`; }) }), receiptNote)),
       h('div', { class: 'formfoot' }, h('a', { class: 'btn', href: '#eq-' + e.id, text: 'Cancel' }), h('button', { class: 'primary', type: 'submit', text: 'Save service' })));
+    fillDefaults();
     return h('div', null,
       h('div', { class: 'top' }, backLink('#eq-' + e.id, e.name || 'Machine')),
       h('div', { class: 'eyebrow', text: 'Log service' }),
@@ -1186,6 +1229,13 @@
         h('label', { class: 'f' }, h('span', { class: 'u-last', text: `Last done at (${uTxt()})` }), h('input', { 'data-f': 'lastMeter', type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: iv.lastMeter ?? '' })),
         h('label', { class: 'f' }, h('span', { text: 'Last done on' }), h('input', { 'data-f': 'lastDate', type: 'date', value: iv.lastDate || '' })),
         h('label', { class: 'f w2' }, h('span', { text: 'Notes' }), h('input', { 'data-f': 'notes', value: iv.notes || '', placeholder: 'Fluid spec, capacity…' })),
+        (() => {
+          const ub = h('div', { class: 'usebox', 'data-uses': '' });
+          (iv.uses || []).forEach(u => useRow(ub, u));
+          return h('div', { class: 'f', style: 'grid-column:1/-1' }, h('span', { class: 'flabel', text: 'Uses from inventory' }), ub,
+            S.inventory.length ? h('button', { type: 'button', class: 'small', style: 'justify-self:start', text: '+ Item', onclick: () => useRow(ub) })
+              : h('span', { class: 'muted', style: 'font-size:.82rem', text: 'Add items in Inventory, then link them here.' }));
+        })(),
         h('button', { class: 'small danger rm', type: 'button', text: 'Remove', onclick: () => row.remove() }));
       ivBox.append(row);
       return row;
@@ -1219,7 +1269,7 @@
       const val = (r, k) => r.querySelector(`[data-f=${k}]`).value.trim();
       out.filters = [...filtersBox.querySelectorAll('[data-kind=filter]')].map(r => ({ name: val(r, 'name'), number: val(r, 'number'), alt: val(r, 'alt'), qty: val(r, 'qty'), notes: val(r, 'notes') }))
         .filter(x => x.name || x.number || x.alt);
-      out.intervals = [...ivBox.querySelectorAll('[data-kind=interval]')].map(r => ({ id: r.dataset.id, task: val(r, 'task'), everyMeter: numOrNull(val(r, 'everyMeter')), everyMonths: numOrNull(val(r, 'everyMonths')), lastMeter: numOrNull(val(r, 'lastMeter')), lastDate: val(r, 'lastDate') || null, notes: val(r, 'notes') }))
+      out.intervals = [...ivBox.querySelectorAll('[data-kind=interval]')].map(r => ({ id: r.dataset.id, task: val(r, 'task'), everyMeter: numOrNull(val(r, 'everyMeter')), everyMonths: numOrNull(val(r, 'everyMonths')), lastMeter: numOrNull(val(r, 'lastMeter')), lastDate: val(r, 'lastDate') || null, notes: val(r, 'notes'), uses: readUses(r.querySelector('[data-uses]')) }))
         .filter(iv => iv.task || iv.everyMeter || iv.everyMonths);
       if (!existing) out.createdAt = Date.now();
       const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';

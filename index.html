@@ -255,6 +255,10 @@ div.f { display: grid; gap: 5px; min-width: 0; }
 .qv span { font-size: .72rem; }
 .invlow { grid-column: 1 / -1; justify-self: start; }
 .btn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); display: inline-block; }
+
+/* v7: service uses inventory */
+.usebox { display: grid; gap: 8px; }
+.userow { display: grid; grid-template-columns: minmax(0, 1fr) 84px auto; gap: 8px; align-items: center; }
 </style>
 </head>
 <body>
@@ -265,6 +269,6 @@ div.f { display: grid; gap: 5px; min-width: 0; }
 
 <script src="config.js?v=3"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
