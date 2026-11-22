@@ -1595,6 +1595,7 @@
     if (!KEY) { S.badLink = true; render(true); return; }
     if (KEY) ls.set('ruxer-key-seen', '1');
     try { S.outbox = JSON.parse(ls.get('ruxer-outbox') || '[]'); } catch { S.outbox = []; }
+    S.view = parseHash();
     S.myName = ls.get('ruxer-name') || '';
     S.needName = !S.myName;
     // Show the saved copy right away, then refresh from the server.
