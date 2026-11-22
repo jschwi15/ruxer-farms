@@ -288,8 +288,10 @@
   }
   const eqIcon = (e) => {
     const c = String(e.category || '').toLowerCase();
+    if (/excavator|mini ?ex|backhoe/.test(c)) return 'excavator';
+    if (/sxs|side.?by.?side|utv|gator|rtv|ranger/.test(c)) return 'sxs';
     if (e.parentId || /implement|mower|cutter|bucket|baler|tiller|loader|attachment|disc|plow/.test(c)) return 'implement';
-    if (/truck|trailer|utv|vehicle|pickup/.test(c)) return 'truck';
+    if (/truck|trailer|vehicle|pickup/.test(c)) return 'truck';
     return 'tractor';
   };
   const invIcon = (c) => c === 'Grease' ? 'grease' : c === 'Filters' ? 'filter' : c === 'Oil & fluids' ? 'drop' : c === 'Parts' ? 'wrench' : 'box';
@@ -1432,7 +1434,7 @@
           meterField,
           h('label', { class: 'f' }, h('span', null, 'Dealer ', h('a', { href: '#dealer-new', class: 'inl', style: 'text-transform:none;letter-spacing:0', text: '+ new' })), dealerSel),
           field('Notes', h('textarea', { id: 'f-notes', name: 'notes', value: e.notes || '', placeholder: 'Fluid capacities, quirks, grease points…' }), 'wide')),
-        h('datalist', { id: 'cats' }, ['Tractor', 'Implement', 'Loader', 'Mower', 'Bucket', 'Baler', 'Tiller', 'Skid steer', 'Truck', 'Trailer', 'UTV', 'Generator'].map(c => h('option', { value: c })))),
+        h('datalist', { id: 'cats' }, ['Tractor', 'Mini excavator', 'Side-by-side (SXS)', 'Implement', 'Loader', 'Mower', 'Bucket', 'Baler', 'Tiller', 'Skid steer', 'Truck', 'Trailer', 'UTV', 'Generator'].map(c => h('option', { value: c })))),
       h('div', { class: 'panel' }, h('div', { class: 'hd' }, h('h2', { text: 'Service intervals' }), h('button', { type: 'button', class: 'small', text: '+ Add', onclick: () => ivRow() })),
         h('p', { class: 'muted', style: 'margin:14px 0 0;font-size:.88rem', text: 'Set hours, months, or both; whichever comes first counts. Leave the interval blank until you know it.' }),
         quick, ivBox),
