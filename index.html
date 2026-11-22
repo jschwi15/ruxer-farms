@@ -595,15 +595,16 @@ tr:last-child td { border-bottom: 0; }
 
     const form = h('form', { class: 'stack', onsubmit: async (ev) => {
       ev.preventDefault();
-      const el = form.elements;
-      const name = el.name.value.trim();
-      if (!name) { toast('Give the machine a name.'); el.name.focus(); return; }
+      // Read machine fields by id: part and interval rows reuse names like "name" and "notes".
+      const f = (k) => form.querySelector('#f-' + k);
+      const name = f('name').value.trim();
+      if (!name) { toast('Give the machine a name.'); f('name').focus(); return; }
       const out = { ...(existing ? findEq(existing.id) || e : e), name };
-      for (const k of ['category', 'make', 'model', 'year', 'vin', 'location']) out[k] = el[k].value.trim();
+      for (const k of ['category', 'make', 'model', 'year', 'vin', 'location']) out[k] = f(k).value.trim();
       out.vin = out.vin.toUpperCase();
-      out.notes = el.notes.value.trim();
+      out.notes = f('notes').value.trim();
       out.meterUnit = unitSel.value;
-      const m = numOrNull(el.meter.value);
+      const m = numOrNull(f('meter').value);
       if (m !== numOrNull(out.meter)) { out.meter = m; out.meterDate = m == null ? null : todayStr(); }
       out.filters = [...filtersBox.querySelectorAll('[data-kind=filter]')].map(r => {
         const g = (n) => r.querySelector(`[name=${n}]`).value.trim();
